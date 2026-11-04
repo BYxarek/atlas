@@ -8,6 +8,7 @@
 - Share economic and combat parameters through assets/balance.json; generate and verify the PHP copy.
 - Extend Godot/PHP parity to three seeded 15-minute bot sessions with save/resume and precise field diagnostics.
 - Add automated balance simulations, concurrent PHP storage benchmarks and opt-in private numeric metrics.
+- Make UI assertions respect the selected locale, including English GitHub Actions runners.
 - Add CLI backup/restore with rollback checks, a checks-only build and GitHub Actions game checks; include war-rule tests.
 - Bump LAN/VPS wire protocol to 8 and PHP protocol to 2; update client and server together. Existing saves without new optional fields remain readable.
 - Validate Android with the API 37 Android Studio emulator; replace oversized mobile confirmation/message windows with responsive in-scene dialogs.

@@ -204,7 +204,7 @@ func run() -> void:
 	await capture("operations-preview")
 	for i in 4: scene.on_second()
 	check(scene.game.countries[foreign].owned, "Battle result applies after arrival")
-	check(scene.notifications_button.text.contains("Уведомления"), "Toolbar includes notifications")
+	check(scene.notifications_button.text.contains(scene.L.text("Уведомления")), "Toolbar includes notifications")
 	scene.notifications_button.pressed.emit()
 	check(scene.card_view == "notifications" and scene.game.notifications_seen == scene.game.notification_serial, "Opening notifications marks existing messages read")
 	scene.game.rng.seed = 7
@@ -213,7 +213,7 @@ func run() -> void:
 	scene.refresh_hud()
 	check(scene.threat_panel.visible and scene.threat_timer.text.contains(scene.time_text(int(warning.deadline) - scene.game.elapsed)), "Corner timer displays remaining warning time")
 	check(scene.notifications_button.text.contains("1"), "New warning increments unread counter")
-	check(scene.threat_identity.text.begins_with("Неизвестная страна"), "Corner timer masks unexplored attacker")
+	check(scene.threat_identity.text.begins_with(scene.L.text("Неизвестная страна")), "Corner timer masks unexplored attacker")
 	scene.open_card("notifications")
 	check(scene.card.offset_top >= scene.threat_panel.get_rect().end.y, "Notification panel does not overlap threat timer")
 	await capture("notifications-preview")
@@ -221,7 +221,7 @@ func run() -> void:
 	scene.game.reports[str(attacker)] = {"units": scene.game.countries[attacker].units.duplicate(), "time": scene.game.elapsed}
 	scene.refresh_hud()
 	scene.refresh_card()
-	check(scene.threat_identity.text.begins_with(scene.game.atlas[attacker].name), "Reconnaissance reveals attacker in current corner timer")
+	check(scene.threat_identity.text.begins_with(scene.L.country(scene.game.atlas[attacker])), "Reconnaissance reveals attacker in current corner timer")
 	escape()
 	await process_frame
 	var remaining = int(warning.deadline) - scene.game.elapsed
