@@ -1,12 +1,12 @@
 # Сторонние материалы
 
-## Godot Engine 4.7.2
+## Godot Engine 4.8-beta2
 
 Игра использует Godot Engine, распространяемый по лицензии MIT.
 
 - Официальный сайт: https://godotengine.org/
-- Лицензия: https://github.com/godotengine/godot/blob/4.7.2-stable/LICENSE.txt
-- Уведомления о компонентах: https://github.com/godotengine/godot/blob/4.7.2-stable/COPYRIGHT.txt
+- Лицензия: https://github.com/godotengine/godot/blob/cafc17a192acf67903910a68aeb3c076c0907a4b/LICENSE.txt
+- Уведомления о компонентах: https://github.com/godotengine/godot/blob/cafc17a192acf67903910a68aeb3c076c0907a4b/COPYRIGHT.txt
 
 Полный текст лицензии и уведомления включены в Windows-архив как `GODOT-LICENSE.txt` и `GODOT-COPYRIGHT.txt`.
 

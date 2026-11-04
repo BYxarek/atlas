@@ -5,7 +5,7 @@ import time
 import tempfile
 
 root = Path(__file__).resolve().parent.parent
-engine = root / "tools/Godot_v4.7.2-stable_win64.exe"
+engine = root / "tools/godot-4.8-beta2/Godot_v4.8-beta2_win64.exe"
 command = [str(engine), "--headless", "--path", str(root), "--script", "tests/network_peer.gd", "--"]
 processes = []
 logs = []

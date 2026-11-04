@@ -1,0 +1,36 @@
+{
+  "version": "4.8-beta2",
+  "source_commit": "cafc17a192acf67903910a68aeb3c076c0907a4b",
+  "archives": {
+    "Godot_v4.8-beta2_win64.exe.zip": {
+      "sha512": "23d6dc2561f95cf296ca88c18d843867dffe978ac23608e3e4eb3fd67c0745cf48a259d51c83650f47e9e42f23154e0f907a6a162ea6b0e47dddbb3d88aa4579",
+      "files": {
+        "Godot_v4.8-beta2_win64.exe": {
+          "path": "tools/godot-4.8-beta2/Godot_v4.8-beta2_win64.exe",
+          "sha256": "9d735a72c1a06bf42379829257b0bf966a6cf0ea507c6d8efa051bcfc8faccf2"
+        },
+        "Godot_v4.8-beta2_win64_console.exe": {
+          "path": "tools/godot-4.8-beta2/Godot_v4.8-beta2_win64_console.exe",
+          "sha256": "1a470886fc810b81a61e01bad7678e38989f1c94cf8e9733bfd1026224b3f42b"
+        }
+      }
+    },
+    "Godot_v4.8-beta2_export_templates.tpz": {
+      "sha512": "260de4173d9bb366110dab4f35e42e39f2eace62f29e082d6630bc5c6ea790ef92f51a9145ffbca2c0ffe97a60da46019c6780d7f88569932cd3237284085c0e",
+      "files": {
+        "templates/windows_release_x86_64.exe": {
+          "path": "tools/godot-4.8-beta2/windows_release_x86_64.exe",
+          "sha256": "afb685959c66c67df9016a5f9d54996d4360b61542cdd6b15410beb2b86aeede"
+        },
+        "templates/android_release.apk": {
+          "path": "tools/godot-4.8-beta2/android_release.apk",
+          "sha256": "f5f56d6a13cfa0d6661cf48fd48ad8b6ddddbd491a74faefc680e1c9fa70803c"
+        },
+        "templates/android_debug.apk": {
+          "path": "tools/godot-4.8-beta2/android_debug.apk",
+          "sha256": "98822b750d78371f786e0ddac1573108e64353cf650ca5fa01fbe93057bfc4a7"
+        }
+      }
+    }
+  }
+}

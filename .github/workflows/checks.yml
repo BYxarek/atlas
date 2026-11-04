@@ -1,0 +1,20 @@
+name: Game checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check game, UI, transports, PHP parity and recovery
+        shell: powershell
+        run: ./tools/build.ps1 -ChecksOnly

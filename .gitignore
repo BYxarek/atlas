@@ -11,6 +11,7 @@ tools/gfp-*.html
 build/
 *.tmp
 tools/*.apk
+tools/godot-*/
 tools/php/
 *.keystore
 *.jks

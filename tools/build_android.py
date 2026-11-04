@@ -7,9 +7,9 @@ import shutil
 import subprocess
 import zipfile
 import re
+from fetch_windows_template import EDITOR, main as ensure_godot
 
 ROOT=Path(__file__).resolve().parent.parent
-EDITOR=ROOT/'tools/Godot_v4.7.2-stable_win64.exe'
 
 def run(command,env,log=None):
     result=subprocess.run([str(x) for x in command],cwd=ROOT,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace')
@@ -20,6 +20,7 @@ def run(command,env,log=None):
     return result.stdout
 
 def main():
+    ensure_godot()
     sdk=os.environ.get('ATLAS_ANDROID_SDK') or os.environ.get('ANDROID_HOME')
     if (not sdk or not Path(sdk).exists()) and shutil.which('android'):
         info=subprocess.check_output(['android','info'],text=True,encoding='utf-8')
@@ -34,11 +35,6 @@ def main():
     env=dict(os.environ,ATLAS_ANDROID_SDK=str(sdk),ATLAS_JAVA_SDK=str(jdk),JAVA_HOME=str(jdk))
     output=ROOT/'build/android'
     output.mkdir(parents=True,exist_ok=True)
-    if not (ROOT/'tools/android_release.apk').exists():
-        from fetch_windows_template import RemoteZip
-        with zipfile.ZipFile(RemoteZip()) as bundle:
-            name=next(n for n in bundle.namelist() if n.endswith('/android_release.apk'))
-            (ROOT/'tools/android_release.apk').write_bytes(bundle.read(name))
     key_dir=Path.home()/'.atlas/signing'
     key_dir.mkdir(parents=True,exist_ok=True)
     key_file=key_dir/'android-release.jks'
@@ -57,7 +53,7 @@ def main():
                GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=config['password'])
     # Preserve all editor preferences while configuring only the two SDK paths.
     editor_dir=Path(os.environ.get('APPDATA',Path.home()/'.config'))/'Godot'
-    settings_file=editor_dir/'editor_settings-4.7.tres'
+    settings_file=editor_dir/'editor_settings-4.8.tres'
     editor_dir.mkdir(parents=True,exist_ok=True)
     settings=settings_file.read_text(encoding='utf-8') if settings_file.exists() else '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n'
     for name,value in [('export/android/android_sdk_path',sdk),('export/android/java_sdk_path',jdk)]:
@@ -65,7 +61,7 @@ def main():
         if re.search('^'+re.escape(name)+r'\s*=',settings,re.M):settings=re.sub('^'+re.escape(name)+r'\s*=.*$',lambda _:line,settings,flags=re.M)
         else:settings+='\n'+line+'\n'
     settings_file.write_text(settings,encoding='utf-8')
-    apk=output/'Atlas-Android-v0.1.0.apk'
+    apk=output/'Atlas-Android-v0.2.0.apk'
     run([EDITOR,'--headless','--path',ROOT,'--export-release','Android',apk],env,output/'export.log')
     build_tools=sorted((Path(sdk)/'build-tools').iterdir(),key=lambda p:tuple(int(x) for x in p.name.split('.') if x.isdigit()))[-1]
     signer=build_tools/('apksigner.bat' if os.name=='nt' else 'apksigner')

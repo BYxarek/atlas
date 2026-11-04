@@ -66,6 +66,7 @@ var pause_button: Button
 var zoom_controls: VBoxContainer
 var insets = Vector4.ZERO
 var menu_shell: PanelContainer
+var mobile_modal: Control
 
 func _ready() -> void:
 	if OS.has_feature("dedicated_server") or "--server" in OS.get_cmdline_user_args():
@@ -148,6 +149,9 @@ func style(bg: Color, border_color: Color = Color.TRANSPARENT, radius: int = 12)
 
 func build_theme() -> void:
 	var t = Theme.new()
+	t.set_sound("pressed_sound", "BaseButton", sound.streams.click)
+	t.set_sound("pressed_disabled_sound", "BaseButton", sound.streams.error)
+	t.set_sound("focus_sound", "BaseButton", sound.streams.select)
 	t.default_font_size = 17 if mobile else 14
 	t.set_color("font_color", "Label", INK)
 	t.set_color("font_color", "Button", INK)
@@ -179,6 +183,9 @@ func label(text: String, font_size: int = 14, color: Color = INK) -> Label:
 	node.text = text
 	node.add_theme_font_size_override("font_size", maxi(font_size, 15) if mobile else font_size)
 	node.add_theme_color_override("font_color", color)
+	if mobile:
+		node.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		node.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return node
 
 func paragraph(text: String, color: Color = MUTED, font_size: int = 13) -> Label:
@@ -196,9 +203,8 @@ func button(text: String, action: Callable, accent: bool = false) -> Button:
 		node.custom_minimum_size.x = 56
 		node.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		node.add_theme_font_size_override("font_size", 16)
-		node.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		node.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	node.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	node.pressed.connect(func(): sound.play("click"))
 	node.pressed.connect(action)
 	if accent:
 		node.add_theme_stylebox_override("normal", style(MINT, Color.TRANSPARENT, 8))
@@ -222,7 +228,7 @@ func info(parent: Node, caption: String, value: String, color: Color = INK) -> v
 
 func box_panel(parent: Node) -> VBoxContainer:
 	var shell = PanelContainer.new()
-	shell.add_theme_stylebox_override("panel", style(Color("142832"), Color("2a4049")))
+	shell.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if mobile else style(Color("142832"), Color("2a4049")))
 	parent.add_child(shell)
 	var box = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
@@ -242,8 +248,10 @@ func build_hud() -> void:
 	money_row.add_theme_constant_override("separation", 10 if mobile else 22)
 	treasury.add_child(money_row)
 	balance = label("◈ 180", 20 if mobile else 23, GOLD)
+	balance.autowrap_mode = TextServer.AUTOWRAP_OFF
 	money_row.add_child(balance)
 	income_label = label(L.text("+0 / сек"), 15, MINT)
+	income_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	money_row.add_child(income_label)
 	pause_button = button("☰" if mobile else "☰  Esc", show_pause)
 	hud.add_child(pause_button)
@@ -327,6 +335,7 @@ func build_card() -> void:
 	if mobile: card_body.add_theme_constant_override("separation", 14)
 
 func menu_frame(title: String, subtitle: String, width: int = 500, height: int = 560) -> void:
+	var changed_page = not overlay.visible or not is_instance_valid(menu_body) or menu_body.get_child(0).text != title
 	clear_box(overlay)
 	overlay.show()
 	hud.hide()
@@ -345,10 +354,12 @@ func menu_frame(title: String, subtitle: String, width: int = 500, height: int =
 	shell.offset_top = -height / 2.0
 	shell.offset_bottom = height / 2.0
 	if mobile:
-		var available = size - Vector2(insets.x + insets.z + 24, insets.y + insets.w + 24)
-		var panel_width = minf(width, available.x)
-		shell.position = Vector2((size.x - panel_width) / 2, insets.y + 12)
-		shell.size = Vector2(panel_width, maxf(100, available.y))
+		shell.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		shell.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shell.offset_left = insets.x
+		shell.offset_top = insets.y
+		shell.offset_right = -insets.z
+		shell.offset_bottom = -insets.w
 	var margin = MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 16)
 	margin.add_theme_constant_override("margin_right", 16)
@@ -371,8 +382,21 @@ func menu_frame(title: String, subtitle: String, width: int = 500, height: int =
 		title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	menu_body.add_child(title_label)
 	menu_body.add_child(paragraph(subtitle))
-	if mobile: menu_body.add_child(paragraph(L.text("Прокрутите меню, чтобы увидеть все действия."), MUTED, 12))
-	if mobile: call_deferred("adapt_inputs", menu_body)
+	if mobile:
+		call_deferred("adapt_inputs", menu_body)
+		if changed_page: animate_page(shell)
+
+func animate_page(target: Control) -> void:
+	if not mobile: return
+	var previous: Tween = target.get_meta("page_tween") if target.has_meta("page_tween") else null
+	if is_instance_valid(previous): previous.kill()
+	target.modulate.a = 0.25
+	target.scale = Vector2(0.985, 0.985)
+	var tween = target.create_tween().set_parallel(true)
+	target.set_meta("page_tween", tween)
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(target, "modulate:a", 1.0, 0.18)
+	tween.tween_property(target, "scale", Vector2.ONE, 0.18)
 
 func show_main_menu() -> void:
 	game.paused = true
@@ -396,7 +420,13 @@ func show_main_menu() -> void:
 	menu_body.add_child(button(L.text("Сохранения · %d") % saves_list.size(), func(): show_saves("menu")))
 	menu_body.add_child(button(L.text("Настройки"), func(): show_settings("menu")))
 	menu_body.add_child(button(L.text("Выйти"), request_exit))
-	menu_body.add_child(paragraph(L.text("Нативная 2D-стратегия · %s · v0.1.0") % ("Android" if mobile else "Windows"), MUTED, 11))
+	menu_body.add_child(paragraph(L.text("Нативная 2D-стратегия · %s · v0.2.0") % ("Android" if mobile else "Windows"), MUTED, 11))
+	if mobile:
+		for action in menu_body.get_children():
+			if action is Button:
+				action.flat = true
+				action.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				action.add_theme_color_override("font_color", MINT if action == resume else INK)
 
 func show_settings(origin: String = "menu") -> void:
 	settings_origin = origin
@@ -523,9 +553,10 @@ func responsive_layout() -> void:
 		zoom_controls.visible = page == "game" and not card.visible
 	apply_card_layout()
 	if is_instance_valid(menu_shell) and overlay.visible:
-		var width = minf(760, size.x - insets.x - insets.z - 24)
-		menu_shell.position = Vector2((size.x - width) / 2, insets.y + 12)
-		menu_shell.size = Vector2(width, size.y - insets.y - insets.w - 24)
+		menu_shell.offset_left = insets.x
+		menu_shell.offset_top = insets.y
+		menu_shell.offset_right = -insets.z
+		menu_shell.offset_bottom = -insets.w
 
 func apply_card_layout() -> void:
 	if not mobile: return
@@ -546,9 +577,13 @@ func adapt_inputs(parent: Variant) -> void:
 			node.custom_minimum_size.y = maxf(56, node.custom_minimum_size.y)
 			if node is Button: node.custom_minimum_size.x = maxf(56, node.custom_minimum_size.x)
 			if node is OptionButton:
+				node.fit_to_longest_item = false
+				node.clip_text = true
+				node.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 				node.get_popup().add_theme_constant_override("v_separation", 24)
 				node.get_popup().add_theme_font_size_override("font_size", 18)
 		elif node is HSlider: node.custom_minimum_size.y = maxf(48, node.custom_minimum_size.y)
+		elif node is ScrollContainer: node.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 
 func apply_fullscreen(enabled: bool) -> void:
 	if mobile: return
@@ -566,7 +601,6 @@ func apply_fullscreen(enabled: bool) -> void:
 		window.mode = windowed_mode
 
 func set_fullscreen(enabled: bool) -> void:
-	sound.play("click")
 	apply_fullscreen(enabled)
 	var config = ConfigFile.new()
 	config.load(settings_path)
@@ -626,15 +660,24 @@ func show_new_game() -> void:
 func fill_new_countries(query: String) -> void:
 	country_picker.clear()
 	new_country_ids.clear()
-	var sorted = game.atlas.duplicate()
-	sorted.sort_custom(func(a, b): return L.country(a).naturalnocasecmp_to(L.country(b)) < 0)
-	for c in sorted:
-		if not query.is_empty() and not query.to_lower() in c.name.to_lower() and not query.to_lower() in c.english.to_lower():
-			continue
+	for c in matching_countries(query):
 		country_picker.add_item(L.country(c))
 		new_country_ids.append(int(c.id))
-		if c.english == "Russia":
+		if query.strip_edges().is_empty() and c.english == "Russia":
 			country_picker.select(new_country_ids.size() - 1)
+
+func matching_countries(query: String) -> Array:
+	var countries = game.atlas.duplicate()
+	countries.sort_custom(func(a, b): return L.country(a).naturalnocasecmp_to(L.country(b)) < 0)
+	query = query.strip_edges()
+	if query.is_empty(): return countries
+	var names = PackedStringArray()
+	for country in countries: names.append(country.name + " " + country.english)
+	var fuzzy = FuzzySearch.new()
+	fuzzy.max_results = countries.size()
+	var matches: Array = []
+	for result in fuzzy.search_all(query, names): matches.append(countries[result.original_index])
+	return matches
 
 func begin_campaign() -> void:
 	if new_country_ids.is_empty():
@@ -659,6 +702,7 @@ func enter_game() -> void:
 	game.paused = false
 	overlay.hide()
 	hud.show()
+	animate_page(hud)
 	card.hide()
 	card_view = ""
 	refresh_hud()
@@ -686,7 +730,7 @@ func show_saves(origin: String = "menu") -> void:
 		rows.add_child(paragraph(L.text("Сохранений пока нет. Создайте новую кампанию — первое автосохранение появится сразу.")))
 	for entry in saves_list:
 		var box = box_panel(rows)
-		var row = HBoxContainer.new()
+		var row = VBoxContainer.new() if mobile else HBoxContainer.new()
 		box.add_child(row)
 		var description = VBoxContainer.new()
 		description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -760,6 +804,7 @@ func show_journal() -> void:
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 14)
 	scroll.add_child(rows)
+	build_battle_reports(rows)
 	for entry in game.events:
 		rows.add_child(paragraph("%s  ·  %s" % [time_text(entry.time), L.render(entry.text)], INK))
 	menu_body.add_child(button(L.text("Назад к паузе"), show_pause))
@@ -786,6 +831,7 @@ func open_card(view: String) -> void:
 	card.show()
 	refresh_card()
 	responsive_layout()
+	animate_page(card)
 
 func refresh_card() -> void:
 	if not card.visible:
@@ -796,6 +842,12 @@ func refresh_card() -> void:
 	card_body.add_child(row)
 	var title = {"army": L.text("Главный штаб"), "countries": L.text("Страны мира"), "arsenal": L.text("Ядерный арсенал"), "economy": L.text("Экономика"), "notifications": L.text("Уведомления")}.get(card_view, L.country(game.atlas[selected]) if selected >= 0 else L.text("Страна"))
 	var heading = label(title, 22)
+	heading.resize_font_to_fit = true
+	heading.minimum_font_size = 16
+	heading.maximum_font_size = 22
+	heading.custom_minimum_size.y = 32
+	heading.autowrap_mode = TextServer.AUTOWRAP_OFF
+	heading.tooltip_text = title
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	row.add_child(heading)
@@ -819,6 +871,10 @@ func action_button(parent: Node, text: String, action: Callable, enabled: Callab
 
 func build_country() -> void:
 	var c = game.countries[selected]
+	if selected in game.wars and not c.owned:
+		card_body.add_child(paragraph(L.text("⚔  В состоянии войны"), RED, 13))
+	if game.rebel_country(selected):
+		card_body.add_child(paragraph(L.text("Повстанцы: снижают оборону на 1–10%. Проверка возврата прежнему владельцу — каждые 2–7 минут."), GOLD, 12))
 	card_body.add_child(paragraph(L.text("●  ВАША ТЕРРИТОРИЯ") if c.owned else ("●  " + str(game.country_owners.get(str(selected), L.text("НЕЗАВИСИМАЯ СТРАНА")))), game.player_color if c.owned else GOLD, 11))
 	if c.owned:
 		var revenue = 0
@@ -839,14 +895,15 @@ func build_country() -> void:
 			for i in 3: info(card_body, L.text(Simulation.UNIT_NAMES[i]), str(int(report.units[i])))
 			info(card_body, L.text("Сила по разведке"), str(int(game.power(report.units))), GOLD)
 			card_body.add_child(paragraph(L.text("Снимок на момент отчёта. Противник может усиливаться."), MUTED, 11))
-		info(card_body, L.text("Сила вашей операции"), str(int(game.power(game.units, game.levels) * (1.0 if game.border(selected) else 0.85))), MINT)
-		action_button(card_body, L.text("◎  Отправить шпиона · 20"), send_spy, func(): return game.can_act() and game.coins >= 20 and game.mission.is_empty())
+		info(card_body, L.text("Сила вашей операции"), str(int(game.power(game.units, game.levels) * (1.0 if game.border(selected) else Simulation.B.naval_multiplier))), MINT)
+		action_button(card_body, L.text("◎  Отправить шпиона · %d") % Simulation.B.spy_cost, send_spy, func(): return game.can_act() and game.coins >= Simulation.B.spy_cost and game.mission.is_empty())
 		action_button(card_body, L.text("⚑  Начать наступление"), confirm_attack, func(): return game.attack_block(selected) == "", true)
 		if game.attack_block(selected) != "": card_body.add_child(paragraph(L.render(game.attack_block(selected)), RED, 12))
 		action_button(card_body, L.text("☢  Ядерный удар · %d доступно") % game.nukes, confirm_nuke, func(): return game.can_act() and game.nukes > 0 and not game.has_operation("nuke"))
 	if not game.mission.is_empty():
 		card_body.add_child(paragraph(L.text("Агент → %s\nОтчёт через %d сек.") % [L.country(game.atlas[int(game.mission.target)]), maxi(0, int(game.mission.arrival) - game.elapsed)], Color("7ac5ef")))
 	for op in game.operations:
+		if op.kind == "enemy" and op.get("surprise", false): continue
 		card_body.add_child(paragraph(L.text("%s → %s\nПрибытие через %d сек.") % [{"attack": L.text("Ваши войска"), "enemy": L.text("ВТОРЖЕНИЕ"), "nuke": L.text("Ядерная ракета")}[op.kind], L.country(game.atlas[int(op.target)]), maxi(0, int(op.arrival) - game.elapsed)], RED if op.kind == "enemy" else GOLD, 12))
 
 func build_economy() -> void:
@@ -868,16 +925,16 @@ func build_economy() -> void:
 
 func build_army() -> void:
 	info(card_body, L.text("Боевая сила"), str(int(game.power(game.units, game.levels))), MINT)
-	card_body.add_child(paragraph(L.text("Армия общая: технологии усиливают наступление и оборону. +25% базовой силы за уровень.")))
+	card_body.add_child(paragraph(L.text("Армия общая: технологии усиливают наступление и оборону. +%d%% базовой силы за уровень.") % roundi(Simulation.B.technology_bonus * 100)))
 	for i in 3:
 		var box = box_panel(card_body)
 		info(box, L.text(Simulation.UNIT_NAMES[i]), L.text("%d ед. · ур. %d") % [game.units[i], game.levels[i]])
-		action_button(box, L.text("+%d ед. · %d монет") % [[10, 3, 2][i], Simulation.UNIT_COST[i]], func():
+		action_button(box, L.text("+%d ед. · %d монет") % [int(Simulation.B.recruit_units[i]), Simulation.UNIT_COST[i]], func():
 			if perform("recruit", [i]): refresh_card(), func(): return game.can_act() and game.coins >= Simulation.UNIT_COST[i], true)
 		var cost = game.upgrade_cost(i)
 		action_button(box, L.text("Технология · %d монет") % cost, func():
 			if perform("upgrade", [i]): refresh_card(), func(): return game.can_act() and game.coins >= cost)
-	card_body.add_child(paragraph(L.text("Сила единицы: пехота 1, авиация 3, флот 4. Десант требует 4 корабля и имеет штраф силы 15%."), MUTED, 12))
+	card_body.add_child(paragraph(L.text("Сила единицы: пехота %d, авиация %d, флот %d. Десант требует %d кораблей и имеет штраф силы %d%%.") % [Simulation.B.unit_weight[0], Simulation.B.unit_weight[1], Simulation.B.unit_weight[2], Simulation.B.naval_ships, roundi((1.0 - Simulation.B.naval_multiplier) * 100)], MUTED, 12))
 
 func build_countries() -> void:
 	search = LineEdit.new()
@@ -896,10 +953,7 @@ func build_countries() -> void:
 func refresh_country_list(query: String) -> void:
 	country_list.clear()
 	list_ids.clear()
-	var sorted = game.atlas.duplicate()
-	sorted.sort_custom(func(a, b): return L.country(a).naturalnocasecmp_to(L.country(b)) < 0)
-	for c in sorted:
-		if not query.is_empty() and not query.to_lower() in c.name.to_lower() and not query.to_lower() in c.english.to_lower(): continue
+	for c in matching_countries(query):
 		list_ids.append(int(c.id))
 		country_list.add_item(("●  " if game.countries[int(c.id)].owned else "    ") + L.country(c))
 		if game.countries[int(c.id)].owned:
@@ -910,7 +964,7 @@ func build_arsenal() -> void:
 	info(card_body, L.text("Впервые захвачено стран"), str(game.conquests.size()))
 	var remaining = Simulation.NUCLEAR_THRESHOLD - game.conquests.size() % Simulation.NUCLEAR_THRESHOLD
 	card_body.add_child(paragraph(L.text("Следующий заряд через %d новых захватов. Один заряд за каждые %d впервые захваченных стран.") % [remaining, Simulation.NUCLEAR_THRESHOLD]))
-	card_body.add_child(paragraph(L.text("Выберите чужую страну на карте и нажмите «Ядерный удар». Ракета летит 3 секунды, затем сокращает каждый род войск на 50%. Остаток округляется вниз."), INK))
+	card_body.add_child(paragraph(L.text("Выберите чужую страну на карте и нажмите «Ядерный удар». Ракета летит %d секунд, затем сокращает каждый род войск на 50%%. Остаток округляется вниз.") % Simulation.B.nuke_seconds, INK))
 	card_body.add_child(paragraph(L.text("Удар не захватывает территорию. Повторный захват уже завоёванной страны не даёт прогресса к следующему заряду.")))
 	if selected >= 0 and not game.countries[selected].owned:
 		card_body.add_child(paragraph(L.text("Текущая цель: ") + L.country(game.atlas[selected]), GOLD))
@@ -930,9 +984,26 @@ func build_notifications() -> void:
 		if warning.status == "pending":
 			info(box, L.text("Ожидаемый срок"), time_text(int(warning.deadline)), GOLD)
 		box.add_child(paragraph(L.text("Оценка силы приблизительная. Разведка раскрывает название страны."), MUTED, 11))
+	build_battle_reports(card_body)
 	card_body.add_child(label(L.text("ПОСЛЕДНИЕ СОБЫТИЯ"), 11, MUTED))
 	for entry in game.events:
 		card_body.add_child(paragraph("%s · %s" % [time_text(entry.time), L.render(entry.text)], INK, 12))
+
+func build_battle_reports(parent: VBoxContainer) -> void:
+	for battle in game.battles:
+		var box = box_panel(parent)
+		box.add_child(paragraph(L.text("Бой за %s · %s") % [L.country(game.atlas[int(battle.target)]), time_text(int(battle.time))], GOLD))
+		box.add_child(paragraph(L.text("Победа") if battle.won else L.text("Поражение"), MINT if battle.won else INK))
+		box.add_child(paragraph(L.text("Вы наступали") if battle.attacking else L.text("Вы оборонялись")))
+		info(box, L.text("Сила атаки / обороны"), "%.1f / %.1f" % [battle.effective, battle.defense])
+		info(box, L.text("Сила без технологий"), "%.1f / %.1f" % [game.power(battle.attackers), game.power(battle.defenders)])
+		info(box, L.text("Сила с технологиями"), "%.1f / %.1f" % [game.power(battle.attackers, battle.attack_levels), game.power(battle.defenders, battle.defense_levels)])
+		info(box, L.text("Морской штраф"), "%d%%" % roundi((1.0 - Simulation.B.naval_multiplier) * 100) if battle.overseas else "0%")
+		info(box, L.text("Помощь повстанцев: снижение обороны"), "%d%%" % battle.rebels)
+		box.add_child(paragraph(L.text("Потери: пехота / авиация / флот")))
+		info(box, L.text("Наступающие"), "%d / %d / %d" % battle.attack_losses)
+		info(box, L.text("Обороняющиеся"), "%d / %d / %d" % battle.defense_losses)
+		box.add_child(paragraph(L.text("Сравнивается итоговая сила на момент прибытия армии."), MUTED, 11))
 
 func send_spy() -> void:
 	if perform("spy", [selected]):
@@ -942,7 +1013,7 @@ func send_spy() -> void:
 
 func confirm_attack() -> void:
 	var id = selected
-	confirm_action(L.text("Начать наступление?"), L.text("Цель: %s\nСтоимость: %d монет. Марш — 4 секунды.\nАрмия понесёт потери даже при победе. Бой рассчитывается по силам на момент прибытия.") % [L.country(game.atlas[id]), game.attack_cost(id)], func():
+	confirm_action(L.text("Начать наступление?"), L.text("Цель: %s\nСтоимость: %d монет. Марш — %d секунд.\nАрмия понесёт потери даже при победе. Бой рассчитывается по силам на момент прибытия.") % [L.country(game.atlas[id]), game.attack_cost(id), Simulation.B.attack_seconds], func():
 		if perform("attack", [id]):
 			autosave()
 			refresh_card()
@@ -950,22 +1021,21 @@ func confirm_attack() -> void:
 
 func confirm_nuke() -> void:
 	var id = selected
-	confirm_action(L.text("Нанести ядерный удар?"), L.text("Цель: %s\nБудет потрачен 1 ядерный удар. Через 3 секунды каждый род войск цели потеряет 50%% состава. Территория не захватывается.") % L.country(game.atlas[id]), func():
+	confirm_action(L.text("Нанести ядерный удар?"), L.text("Цель: %s\nБудет потрачен 1 ядерный удар. Через %d секунд каждый род войск цели потеряет 50%% состава. Территория не захватывается.") % [L.country(game.atlas[id]), Simulation.B.nuke_seconds], func():
 		if perform("nuke", [id]):
 			autosave()
 			refresh_card()
 			refresh_hud())
 
 func confirm_action(title: String, text: String, action: Callable) -> void:
+	if mobile:
+		show_mobile_dialog(title, text, action, true)
+		return
 	var dialog = ConfirmationDialog.new()
 	dialog.title = title
 	dialog.dialog_text = text
 	dialog.dialog_autowrap = true
 	dialog.min_size = Vector2i(480, 200)
-	if mobile:
-		dialog.min_size = Vector2i(mini(480, int(size.x) - 32), mini(200, int(size.y) - 32))
-		dialog.get_ok_button().custom_minimum_size.y = 56
-		dialog.get_cancel_button().custom_minimum_size.y = 56
 	dialog.ok_button_text = L.text("Подтвердить")
 	dialog.cancel_button_text = L.text("Отмена")
 	add_child(dialog)
@@ -977,18 +1047,51 @@ func confirm_action(title: String, text: String, action: Callable) -> void:
 	dialog.popup_centered()
 
 func message(title: String, text: String) -> void:
+	if mobile:
+		show_mobile_dialog(title, L.render(text), func(): pass, false)
+		return
 	var dialog = AcceptDialog.new()
 	dialog.title = title
 	dialog.dialog_text = L.render(text)
 	dialog.dialog_autowrap = true
 	dialog.min_size = Vector2i(450, 160)
-	if mobile:
-		dialog.min_size = Vector2i(mini(450, int(size.x) - 32), mini(160, int(size.y) - 32))
-		dialog.get_ok_button().custom_minimum_size.y = 56
 	add_child(dialog)
 	dialog.confirmed.connect(dialog.queue_free)
 	dialog.canceled.connect(dialog.queue_free)
 	dialog.popup_centered()
+
+func show_mobile_dialog(title: String, text: String, action: Callable, confirmation: bool) -> void:
+	if is_instance_valid(mobile_modal): mobile_modal.queue_free()
+	var layer = ColorRect.new()
+	layer.color = Color(0, 0, 0, 0.75)
+	add_child(layer)
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mobile_modal = layer
+	var center = CenterContainer.new()
+	layer.add_child(center)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var panel = PanelContainer.new()
+	panel.custom_minimum_size.x = minf(480, size.x - 32)
+	panel.add_theme_stylebox_override("panel", style(Color("10212b"), MINT, 12))
+	center.add_child(panel)
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(minf(448, size.x - 64), minf(340, size.y - 96))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	center.resized.connect(func():
+		panel.custom_minimum_size.x = minf(480, size.x - 32)
+		scroll.custom_minimum_size = Vector2(minf(448, size.x - 64), minf(340, size.y - 96)))
+	var body = VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 12)
+	scroll.add_child(body)
+	body.add_child(paragraph(title, GOLD, 18))
+	body.add_child(paragraph(text, INK, 14))
+	body.add_child(button(L.text("Подтвердить") if confirmation else "OK", func():
+		layer.queue_free()
+		sound.play("confirm")
+		action.call(), true))
+	if confirmation: body.add_child(button(L.text("Отмена"), func(): layer.queue_free(); sound.play("cancel")))
 
 func refresh_hud() -> void:
 	balance.text = "◈ %s" % format_number(int(game.coins))
@@ -1026,7 +1129,7 @@ func announce(text: String) -> void:
 	toast_tween.tween_interval(7.4)
 	toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.35)
 	toast_tween.parallel().tween_property(toast_panel, "position:y", rest - 16, 0.35)
-	toast_tween.tween_callback(toast_panel.hide)
+	toast_tween.tween_callback(func(): toast_panel.hide(); toast_tween = null)
 
 func _process(_delta: float) -> void:
 	if mobile and is_instance_valid(zoom_controls): zoom_controls.visible = page == "game" and not card.visible
@@ -1092,7 +1195,7 @@ func perform(action: String, args: Array) -> bool:
 func receive_network_view(data: Dictionary) -> void:
 	if not network.active or network.stage != "game": return
 	if not data.get("colors") is Dictionary or not data.get("names") is Dictionary or not data.get("remote") is Array or not data.get("sounds") is Array or not data.get("effects") is Array: return
-	if data.colors.size() > 176 or data.names.size() > 176 or data.remote.size() > 24 or data.sounds.size() > 40 or data.effects.size() > 40: return
+	if data.colors.size() > 176 or data.names.size() > 176 or data.remote.size() > 350 or data.sounds.size() > 40 or data.effects.size() > 40: return
 	for key in data.colors:
 		if not key is String or not key.is_valid_int() or int(key) < 0 or int(key) >= 176 or not data.colors[key] in network.COLORS: return
 	for key in data.names:
@@ -1195,6 +1298,10 @@ func _notification(what: int) -> void:
 		sound.sync()
 
 func mobile_back() -> void:
+	if is_instance_valid(mobile_modal) and not mobile_modal.is_queued_for_deletion():
+		mobile_modal.queue_free()
+		sound.play("cancel")
+		return
 	if OS.has_feature("android") and DisplayServer.virtual_keyboard_get_height() > 0:
 		DisplayServer.virtual_keyboard_hide()
 		return

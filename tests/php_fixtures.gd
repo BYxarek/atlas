@@ -9,14 +9,15 @@ func snapshot(action: Array) -> void:
 	for slot in w.factions:
 		var view = w.view(slot, players).game
 		var state = {}
-		for key in ["home", "coins", "units", "levels", "mission", "reports", "operations", "conquests", "nukes", "victories", "defeats", "countries"]: state[key] = view[key]
+		for key in ["home", "coins", "units", "levels", "mission", "reports", "operations", "conquests", "nukes", "victories", "defeats", "countries", "battles"]: state[key] = view[key]
 		states[slot] = state.duplicate(true)
-	fixtures.append({"action": action, "elapsed": w.elapsed, "owners": w.owners.duplicate(), "states": states})
+	fixtures.append({"action": action, "elapsed": w.elapsed, "owners": w.owners.duplicate(), "states": states,
+		"occupations": w.occupations.duplicate(true), "random_state": w.random_state, "bot_profiles": w.bot_profiles.duplicate(true)})
 
 func _initialize() -> void:
 	w.add_faction("a", 0, "69dfbd")
 	w.add_faction("b", 1, "73aeef")
-	snapshot(["init"])
+	snapshot(["init", w.random_state])
 	for action in [["recruit", 0], ["business", 0, 0], ["upgrade", 1], ["spy", 1]]:
 		w.command("a", action[0], action.slice(1))
 		snapshot(["command", "a"] + action)
@@ -42,6 +43,38 @@ func _initialize() -> void:
 	w.remove_faction("c")
 	players.erase("c")
 	snapshot(["remove", "c"])
+	w = World.new()
+	w.random_state = 2026
+	w.add_faction("a", 1, "69dfbd")
+	w.add_faction("b", 3, "73aeef")
+	snapshot(["reset", 2026])
+	w.factions.a.units = [1000, 100, 100]
+	snapshot(["army", "a", 1000, 100, 100])
+	w.command("a", "attack", [3])
+	snapshot(["command", "a", "attack", 3])
+	for i in 4: w.tick([])
+	snapshot(["tick", 4])
+	for turn in 10:
+		for i in 60: w.tick([])
+		snapshot(["tick", 60])
+	for seed_value in [17, 2026, 987654]:
+		w = World.new()
+		w.random_state = seed_value
+		players = {}
+		for i in 4:
+			var slot = "bot%d" % i
+			players[slot] = {"name": slot, "color": "69dfbd"}
+			w.add_faction(slot, i * 37, "69dfbd")
+		snapshot(["session", seed_value])
+		for minute in 15:
+			for i in 60: w.tick(players.keys())
+			snapshot(["all_bots", 60])
+			if minute == 7:
+				var saved = JSON.parse_string(JSON.stringify(w.export_data()))
+				var resumed = World.new()
+				assert(resumed.restore_data(saved, players), "Long session must restore")
+				w = resumed
+				snapshot(["roundtrip"])
 	var file = FileAccess.open("res://build/php-fixtures.json", FileAccess.WRITE)
 	file.store_string(JSON.stringify(fixtures))
 	file.close()

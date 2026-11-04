@@ -82,6 +82,7 @@ func draw_motion(canvas: Control) -> void:
 		agent.kind = "spy"
 		routes.append(agent)
 	for op in routes:
+		if op.kind == "enemy" and op.get("surprise", false): continue
 		var a = screen_point(int(op.from))
 		var b = screen_point(int(op.target))
 		var progress = clampf((visual_time - op.start) / maxf(1, op.arrival - op.start), 0, 1)
@@ -284,6 +285,14 @@ func _draw() -> void:
 		draw_circle(center, 5 / s, game.player_color, false, 1.6 / s, true)
 	draw_set_transform(Vector2.ZERO)
 	var font = ThemeDB.fallback_font
+	for id in game.wars:
+		if game.countries[int(id)].owned: continue
+		var point = screen_point(int(id))
+		draw_circle(point, 9, Color("501e2b"))
+		draw_line(point + Vector2(-4, -4), point + Vector2(4, 4), Color("ff9a9a"), 2, true)
+		draw_line(point + Vector2(-4, 4), point + Vector2(4, -4), Color("ff9a9a"), 2, true)
+		draw_line(point + Vector2(-5, 1), point + Vector2(-1, 5), Color("ff9a9a"), 1.5, true)
+		draw_line(point + Vector2(1, 5), point + Vector2(5, 1), Color("ff9a9a"), 1.5, true)
 	for ocean in [[L.text("Т И Х И Й  О К Е А Н"), Vector2(-145, 0)], [L.text("А Т Л А Н Т И К А"), Vector2(-35, 8)], [L.text("И Н Д И Й С К И Й"), Vector2(76, -27)]]:
 		var p = project_point(ocean[1]) * s + map_origin()
 		draw_string(font, p - Vector2(65, 0), ocean[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("44606a"))

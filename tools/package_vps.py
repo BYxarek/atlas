@@ -5,7 +5,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 root = Path(__file__).resolve().parent.parent
 files = [root / name for name in (
     "project.godot", "main.tscn", "export_presets.cfg", "LICENSES.md", "LICENSE", ".dockerignore",
-    "assets/world.json", "assets/military.json", "assets/icon.svg",
+    "assets/world.json", "assets/military.json", "assets/balance.json", "assets/icon.svg", "assets/boot_splash.png",
     "assets/i18n/en.json",
     "assets/legal/GODOT-LICENSE.txt", "assets/legal/GODOT-COPYRIGHT.txt", "assets/legal/LICENSES.md",
     "tools/GODOT-LICENSE.txt", "tools/GODOT-COPYRIGHT.txt",

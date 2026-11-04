@@ -22,7 +22,7 @@ ACME_EMAIL=you@example.com
 ATLAS_MAX_ROOMS=8
 ```
 
-Enter only the domain, without scheme/path/port. Room limits are 1–32 including inactive/saved rooms; each has up to eight player/bot slots. Start small and measure load. The build downloads checksum-verified Godot 4.7.2 and creates the server pack. Caddy obtains and renews HTTPS certificates; DNS and ports must already work.
+Enter only the domain, without scheme/path/port. Room limits are 1–32 including inactive/saved rooms; each has up to 176 player/bot slots. Start small and measure load. The build downloads checksum-verified Godot 4.8-beta2 and creates the server pack. Caddy obtains and renews HTTPS certificates; DNS and ports must already work.
 
 Connect from the matching Windows or Android release using `wss://atlas.example.com`. Create/join a room, choose country/color and confirm readiness. The administrator manages bots/seats and starts the match. Room codes are public identifiers, not passwords. There is no global server directory or central account service.
 

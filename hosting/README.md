@@ -28,7 +28,7 @@
 
 ## Комнаты и возвращение
 
-После подключения игрок видит список комнат и может создать свою. В комнате до 8 игроков и ботов. Администратор выбирает запуск после готовности всех, добавляет ботов, удаляет участников. Каждый выбирает свою страну и цвет. Старт одинаковый: 35 пехоты, 8 авиации, 4 корабля и 180 монет. В PvP можно потерять последнюю страну.
+После подключения игрок видит список комнат и может создать свою. В комнате до 176 игроков и ботов. Администратор выбирает запуск после готовности всех, добавляет ботов, удаляет участников. Каждый выбирает свою страну и цвет. Старт одинаковый: 35 пехоты, 8 авиации, 4 корабля и 180 монет. В PvP можно потерять последнюю страну.
 
 Финансы, результаты боя и разведданные рассчитывает PHP. Точные чужие войска не передаются до личной разведки. Повтор отправленного запроса после сетевой ошибки не повторяет покупку или списание денег.
 
@@ -54,8 +54,12 @@
 
 ## Обновление и диагностика
 
-Перед обновлением сделайте копию данных. Заменяйте только файлы программы, сохраняя **config.php и весь data_dir**. Используйте клиент из этого же релиза с поддержкой PHP-протокола 1. Текущий VPS-протокол не меняется.
+Перед обновлением сделайте копию данных. Заменяйте только файлы программы, сохраняя **config.php и весь data_dir**. Используйте клиент из этого же релиза с поддержкой PHP-протокола 2. Текущий VPS-протокол не меняется.
 
 Если вместо JSON приходит HTML, проверьте адрес, ошибки PHP, редиректы, CAPTCHA и ограничения ModSecurity. При ошибке хранилища проверьте права записи, свободное место и PHP error log. Никогда не включайте вывод ошибок с путями и содержимым данных в публичный ответ API. Если `.htaccess` вызывает 500 на вашем тарифе, согласуйте его директивы с хостером: PHP-защита файлов данных остаётся обязательной.
 
 Основа: [flock](https://www.php.net/manual/en/function.flock.php), [hash_hmac](https://www.php.net/manual/en/function.hash-hmac.php), [HTTP-клиент Godot](https://docs.godotengine.org/en/stable/classes/class_httprequest.html).
+
+## Diagnostics and consistent backups
+
+Set `metrics=true` in your private config to log numeric request/storage timings to the PHP error log. Metrics contain no identities or request bodies. Optional CLI: `php storage.php backup DATA_DIRECTORY SNAPSHOT_FILE` and `php storage.php restore DATA_DIRECTORY SNAPSHOT_FILE`. Store snapshots outside the public web root; use the existing stopped-API FTP procedure when CLI is unavailable. Restore preserves `before-restore.php`. See `docs/TECHNICAL_IMPROVEMENTS.ru.md` in the source repository for the coordinated client/server update and rollback procedure.

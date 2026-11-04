@@ -28,7 +28,7 @@ Cron exits after a short request. Client requests also advance time, so a minute
 
 ## Rooms and capacity
 
-Rooms support eight humans/bots. The administrator manages seats and starts after everyone is ready. Start resources are equal: 35 infantry, 8 aircraft, 4 ships and 180 coins. PvP can eliminate the last territory. Exact enemy troops remain hidden until personal reconnaissance. Retrying an accepted command does not duplicate its purchase.
+Rooms support up to 176 humans/bots. The administrator manages seats and starts after everyone is ready. Start resources are equal: 35 infantry, 8 aircraft, 4 ships and 180 coins. PvP can eliminate the last territory. Exact enemy troops remain hidden until personal reconnaissance. Retrying an accepted command does not duplicate its purchase.
 
 Returning to the lobby pauses the room. Lost connections pause after the presence lease, default 20 seconds. Reconnect using the same profile and server address; after abrupt disconnects wait up to the lease duration. Administration can transfer to another connected human. Room codes are identifiers, not passwords. VPS/PHP/LAN saves remain separate.
 
@@ -42,6 +42,10 @@ Prefer a directory outside the web root when permitted. Otherwise PHP data-file 
 
 For consistent backups disable API access and cron in the panel, download `state.php` and `backup.php`, then re-enable access. Restore while requests are stopped by replacing `state.php` with the chosen backup, retaining its protective first PHP line. Keep the lock file. Do not edit stored JSON manually.
 
-Before upgrades back up data, then replace program files only, preserving `config.php` and all of `data_dir`. Use client/backend files from the same release (PHP protocol 1).
+Before upgrades back up data, then replace program files only, preserving `config.php` and all of `data_dir`. Use client/backend files from the same release (PHP protocol 2).
 
 For HTML responses instead of JSON check URLs, redirects, CAPTCHA, PHP errors and ModSecurity. For storage failures check write permissions, free disk and private PHP logs. Never expose debug errors, paths or stored data in public API responses. If `.htaccess` produces HTTP 500, consult the provider and retain the PHP guards.
+
+## Diagnostics and consistent backups
+
+Set `metrics=true` in your private config to log numeric request/storage timings to the PHP error log. Metrics contain no identities or request bodies. Optional CLI: `php storage.php backup DATA_DIRECTORY SNAPSHOT_FILE` and `php storage.php restore DATA_DIRECTORY SNAPSHOT_FILE`. Store snapshots outside the public web root; use the existing stopped-API FTP procedure when CLI is unavailable. Restore preserves `before-restore.php`. See `docs/TECHNICAL_IMPROVEMENTS.ru.md` in the source repository for the coordinated client/server update and rollback procedure.

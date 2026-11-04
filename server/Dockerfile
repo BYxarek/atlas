@@ -7,14 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM runtime AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends curl unzip \
     && rm -rf /var/lib/apt/lists/*
-RUN curl -fL --retry 3 https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip \
-    && echo 'cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4  /tmp/godot.zip' | sha256sum -c - \
+RUN curl -fL --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.8-beta2/Godot_v4.8-beta2_linux.x86_64.zip -o /tmp/godot.zip \
+    && echo '77470f53a9039cd22837935380230220167e098324e82ec448ee4b1f943f00afc424885f7d6631f385123d7a630a9399b3cc1b0e1dad1a4ac45c6356b3a0aa45  /tmp/godot.zip' | sha512sum -c - \
     && unzip /tmp/godot.zip -d /tmp \
-    && install /tmp/Godot_v4.7.2-stable_linux.x86_64 /usr/local/bin/godot
+    && install /tmp/Godot_v4.8-beta2_linux.x86_64 /usr/local/bin/godot
 WORKDIR /project
 COPY project.godot main.tscn export_presets.cfg ./
 COPY src ./src
-COPY assets/world.json assets/military.json assets/icon.svg ./assets/
+COPY assets/world.json assets/military.json assets/balance.json assets/icon.svg ./assets/
 COPY assets/i18n ./assets/i18n
 COPY assets/legal ./assets/legal
 RUN godot --headless --editor --import --quit \

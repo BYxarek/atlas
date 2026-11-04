@@ -6,9 +6,9 @@ signal discovery_changed
 signal closed(reason: String)
 signal notice(text: String)
 signal directory_changed
-const WIRE_VERSION = 7
+const WIRE_VERSION = 8
 const World = preload("res://src/network_world.gd")
-const MAX_PLAYERS = 8
+const MAX_PLAYERS = 176
 const DEFAULT_PORT = 24760
 const DISCOVERY_PORT = 24761
 const COLORS = ["69dfbd", "73aeef", "edc16e", "b697ef", "f291a1", "ed876a", "c9dbed", "a8cc6a"]
@@ -363,9 +363,15 @@ func apply_request(sender: int, action: String, args: Array) -> bool:
 			if args.size() != 1 or not args[0] is bool: return false
 			players[slot].ready = args[0]
 		"bot":
-			if slot != host_slot or players.size() >= MAX_PLAYERS or not has_free_country(): return false
-			var bot_id = "bot_" + Crypto.new().generate_random_bytes(6).hex_encode()
-			players[bot_id] = make_player("Бот %d" % players.size(), "", 0, true)
+			var count = args[0] if args.size() == 1 else 1
+			if slot != host_slot or args.size() > 1 or not count is int or count < 1 or count > MAX_PLAYERS - players.size(): return false
+			var free = 0
+			for country in MAX_PLAYERS:
+				if country_available("", country): free += 1
+			if count > free: return false
+			for i in count:
+				var bot_id = "bot_" + Crypto.new().generate_random_bytes(6).hex_encode()
+				players[bot_id] = make_player("Бот %d" % players.size(), "", 0, true)
 		"kick":
 			if slot != host_slot or args.size() != 1 or not args[0] is String or args[0] == host_slot or not players.has(args[0]): return false
 			var removed = players[args[0]]

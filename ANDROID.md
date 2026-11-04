@@ -1,4 +1,4 @@
-# ATLAS для Android · v0.1.0
+# ATLAS для Android · v0.2.0
 
 Нативная сборка Godot с библиотеками armeabi-v7a, arm64-v8a, x86 и x86_64. Интерфейс и карта отрисовываются движком, WebView не используется. Минимальная версия — Android 7.0 (API 24), требуется OpenGL ES 3.0. Текущий шаблон Godot нацелен на Android 16 (API 36).
 
@@ -28,7 +28,7 @@
 
 ## Сборка из исходников на Windows
 
-Нужны Godot 4.7.2, Python, Android SDK Platform-Tools/Build-Tools и JDK 17 или новее. Подойдёт JBR из Android Studio. Android CLI (`android info`) помогает определить SDK; поддерживаются переменные `ATLAS_ANDROID_SDK` и `ATLAS_JAVA_SDK` для явного выбора путей.
+Нужны Godot 4.8-beta2, Python, Android SDK Platform-Tools/Build-Tools и JDK 17 или новее. Подойдёт JBR из Android Studio. Android CLI (`android info`) помогает определить SDK; поддерживаются переменные `ATLAS_ANDROID_SDK` и `ATLAS_JAVA_SDK` для явного выбора путей.
 
 ```powershell
 python tools/build_android.py

@@ -30,6 +30,42 @@ func run() -> void:
 	await process_frame
 	check(scene.page == "menu" and scene.overlay.visible and not scene.hud.visible, "Boot opens main menu")
 	check(scene.game.paused and not scene.card.visible, "Main menu blocks simulation and panels")
+	check(scene.matching_countries("").size() == scene.game.atlas.size(), "Empty fuzzy query keeps all countries")
+	check(scene.matching_countries("Jpan")[0].english == "Japan", "Godot 4.8 fuzzy search tolerates a missing letter")
+	check(scene.matching_countries("  Япония  ")[0].english == "Japan", "Fuzzy search supports Russian and trims spaces")
+	check(scene.matching_countries("zzzzzzzzzzzzzzzz").is_empty(), "Unmatched query has no countries")
+	var native_button = scene.button("test", func(): pass)
+	scene.add_child(native_button)
+	check(native_button.get_theme_sound("pressed_sound") == scene.sound.streams.click, "Native button audio inherits the shared theme")
+	check(AudioServer.get_bus_send(AudioServer.get_bus_index("Interface")) == "Effects", "Native UI audio uses the effects volume")
+	var clicks = [0]
+	native_button.pressed.connect(func(): clicks[0] += 1)
+	native_button.press()
+	check(clicks[0] == 1, "Godot 4.8 native press invokes the action once")
+	if DisplayServer.get_name() != "headless":
+		await process_frame
+		var touch = InputEventScreenTouch.new()
+		touch.position = native_button.get_global_rect().get_center()
+		touch.pressed = true
+		Input.parse_input_event(touch)
+		await process_frame
+		touch = touch.duplicate()
+		touch.pressed = false
+		Input.parse_input_event(touch)
+		await process_frame
+		check(clicks[0] == 2, "Touch press activates the native button exactly once")
+		var ui_bus = AudioServer.get_bus_index("Interface")
+		var capture_audio = AudioEffectCapture.new()
+		AudioServer.add_bus_effect(ui_bus, capture_audio)
+		native_button.press()
+		await create_timer(0.15).timeout
+		var samples = capture_audio.get_buffer(capture_audio.get_frames_available())
+		var audible = false
+		for sample in samples:
+			if sample.length_squared() > 0.000000001: audible = true
+		check(audible, "Native theme button produces audio on the interface bus")
+		AudioServer.remove_bus_effect(ui_bus, AudioServer.get_bus_effect_count(ui_bus) - 1)
+	native_button.queue_free()
 	scene.show_settings("menu")
 	check(scene.page == "settings" and scene.game.paused, "Settings are available from the main menu")
 	scene.master_slider.value = 65

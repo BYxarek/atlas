@@ -25,7 +25,7 @@ func _ready() -> void:
 	http.request_completed.connect(completed)
 	last_success = Time.get_ticks_msec()
 	current = {"action": "connect", "name": net.player_name, "token": net.login_token(),
-		"nonce": Crypto.new().generate_random_bytes(16).hex_encode(), "protocol": 1}
+		"nonce": Crypto.new().generate_random_bytes(16).hex_encode(), "protocol": 2}
 
 func enqueue(action: String, args: Array = [], command: String = "") -> bool:
 	if stopped or pending.size() >= 16 or session.is_empty(): return false

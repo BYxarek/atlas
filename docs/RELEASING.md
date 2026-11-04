@@ -6,3 +6,7 @@
 4. Check the files staged for publication for private config, profiles, keys and generated data. Check APK signatures and Windows startup. Record hardware/deployment checks that were not run.
 5. Commit the source, tag `vX.Y.Z` and publish a GitHub release with Windows ZIP, Android APK, VPS source ZIP, PHP hosting ZIP and `SHA256SUMS.txt`. The tag must point to the exact source used by the build. Include known limitations in release notes.
 6. Verify the public repository, tag, attachment sizes and downloaded checksums. Never attach signing keys or a locally configured server archive.
+
+## Source-only releases
+
+When publishing without local builds, update versions and the changelog, run focused source checks, then commit and tag the exact source. Create the GitHub release without uploaded assets. GitHub provides source archives automatically. State clearly in the release notes and README that no EXE/APK or locally generated archives are attached. For 0.2.0 this source-only procedure replaces the full local export/attachment steps above.

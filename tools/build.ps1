@@ -1,26 +1,24 @@
+param([switch]$ChecksOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projectRoot
-$version = '4.7.2-stable'
-$editorPath = Join-Path $PSScriptRoot "Godot_v${version}_win64_console.exe"
-$releaseTemplate = Join-Path $PSScriptRoot 'windows_release_x86_64.exe'
-
-if (-not (Test-Path -LiteralPath $editorPath)) {
-    $archivePath = Join-Path $PSScriptRoot 'godot.zip'
-    Invoke-WebRequest "https://github.com/godotengine/godot/releases/download/$version/Godot_v${version}_win64.exe.zip" -OutFile $archivePath
-    Expand-Archive -LiteralPath $archivePath -DestinationPath $PSScriptRoot -Force
-}
-if (-not (Test-Path -LiteralPath $releaseTemplate)) {
-    python tools/fetch_windows_template.py
-    if ($LASTEXITCODE -ne 0) { throw 'Could not download Windows export template' }
-}
+$version = (Get-Content (Join-Path $PSScriptRoot 'godot_release.json') -Raw | ConvertFrom-Json).version
+$editorPath = Join-Path $PSScriptRoot "godot-$version/Godot_v${version}_win64_console.exe"
+python tools/fetch_windows_template.py
+if ($LASTEXITCODE -ne 0) { throw 'Godot editor/template verification failed' }
 
 & $editorPath --headless --path $projectRoot --editor --import --quit
 if ($LASTEXITCODE -ne 0) { throw 'Godot import failed' }
 python tools/check_translations.py
 if ($LASTEXITCODE -ne 0) { throw 'Translation coverage check failed' }
-foreach ($testScript in @('tests/test_game.gd', 'tests/test_features.gd', 'tests/test_warnings.gd', 'tests/test_military.gd', 'tests/test_audio.gd', 'tests/test_ui.gd', 'tests/test_network.gd', 'tests/test_mobile.gd')) {
-    & $editorPath --headless --path $projectRoot --script $testScript
+python tests/test_storage_tools.py
+if ($LASTEXITCODE -ne 0) { throw 'Storage tools checks failed' }
+python tests/test_build_tools.py
+if ($LASTEXITCODE -ne 0) { throw 'Godot installer checks failed' }
+python tests/test_check_runner.py
+if ($LASTEXITCODE -ne 0) { throw 'Test runner checks failed' }
+foreach ($testScript in @('tests/test_game.gd', 'tests/test_features.gd', 'tests/test_warnings.gd', 'tests/test_military.gd', 'tests/test_audio.gd', 'tests/test_ui.gd', 'tests/test_network.gd', 'tests/test_mobile.gd', 'tests/test_mobile_layout.gd', 'tests/test_war_rules.gd', 'tests/test_strategy.gd')) {
+    python tools/test_godot.py $testScript
     if ($LASTEXITCODE -ne 0) { throw "Tests failed: $testScript" }
 }
 
@@ -35,8 +33,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Dedicated server checks failed' }
 if ($LASTEXITCODE -ne 0) { throw 'PHP map preparation failed' }
 python tools/test_php.py
 if ($LASTEXITCODE -ne 0) { throw 'PHP hosting checks failed' }
+if ($ChecksOnly) { Write-Host 'All checks passed'; return }
 
-$outputDirectory = Join-Path $projectRoot 'build/windows-v0.1.0'
+$outputDirectory = Join-Path $projectRoot 'build/windows-v0.2.0'
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 & $editorPath --headless --path $projectRoot --export-release 'Windows Desktop' (Join-Path $outputDirectory 'Atlas.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Windows export failed' }

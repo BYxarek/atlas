@@ -22,6 +22,12 @@ func _ready() -> void:
 		AudioServer.add_bus()
 		AudioServer.set_bus_name(AudioServer.bus_count - 1, "Effects")
 		AudioServer.set_bus_send(AudioServer.bus_count - 1, "Master")
+	if AudioServer.get_bus_index("Interface") < 0:
+		AudioServer.add_bus()
+		var ui_bus = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(ui_bus, "Interface")
+		AudioServer.set_bus_send(ui_bus, "Effects")
+		AudioServer.set_bus_volume_db(ui_bus, -13)
 	var limiter_exists = false
 	for i in AudioServer.get_bus_effect_count(0):
 		if AudioServer.get_bus_effect(0, i) is AudioEffectHardLimiter: limiter_exists = true
@@ -82,6 +88,7 @@ func sync() -> void:
 		if player.get_meta("gameplay", false): player.stream_paused = game.paused
 	var wanted = {"army_loop": false, "naval_loop": false, "spy_loop": not game.mission.is_empty(), "rocket_loop": false}
 	for op in game.operations + game.remote_operations:
+		if op.kind == "enemy" and op.get("surprise", false): continue
 		if op.kind == "nuke": wanted.rocket_loop = true
 		elif op.kind in ["attack", "enemy"]:
 			wanted["naval_loop" if op.overseas else "army_loop"] = true

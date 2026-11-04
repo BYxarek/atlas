@@ -32,6 +32,16 @@ Every ten first-time conquests grant one nuclear charge. The starting country an
 
 ## Multiplayer differences and saves
 
-Rooms contain up to eight humans/bots, each with separate money, army, technology and intelligence. PvP can eliminate a player's last territory. The personal menu does not pause an online match; return everyone to the lobby for a shared pause. Backends and identity handling are explained in [Multiplayer](MULTIPLAYER.md).
+Rooms contain up to 176 humans/bots, each with separate money, army, technology and intelligence. PvP can eliminate a player's last territory. The personal menu does not pause an online match; return everyone to the lobby for a shared pause. Backends and identity handling are explained in [Multiplayer](MULTIPLAYER.md).
 
 Autosaves run every 15 game seconds and on important actions; manual snapshots remain separate. See [Playing](PLAYING.md) for controls, backup recovery and storage paths. Simulated sea access and combat are intentionally simplified; there is no tactical battlefield, diplomacy or offline income.
+
+## Wars and rebels
+
+Bots announce 80% of attacks on players; 20% are surprises, hidden until battle. Solo campaigns also allow rarer surprise invasions while retaining last-country invasion protection. Crossed swords mark hostile countries after failed attacks and territorial losses. Some strong countries have rebels: base army power at least 300 and every third map entry. They reduce defense by a random 1–10%. After a random 2–7 minutes of occupation, a 20% uprising chance repeats after another random 2–7 minutes and can return the country to its previous owner. War and uprising state is saved. See [Multiplayer](MULTIPLAYER.md) for room rules.
+
+## Battle reports and bot strategies
+
+Notifications and the journal retain 20 battle reports with final strength, technology contribution, naval penalty, rebel assistance and losses per branch. Both participants receive reports online; they record the battle rather than current intelligence. Reports persist with saves.
+
+Network-room bots receive an economic, aggressive or cautious strategy with random risk, economic and recruitment preferences. New sessions roll new profiles independently of country; reconnects and saves preserve them. Solo neutral invasions retain their existing behavior.

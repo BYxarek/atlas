@@ -121,6 +121,8 @@ func run() -> void:
 	check(scene.page == "lobby", "Shared pause displays lobby")
 	scene.network.shutdown("")
 	check(scene.page == "menu" and scene.game.home == -1 and not scene.game.network_game, "Leave network resets proxy state")
+	# Let queued audio playback start before tearing down the scene.
+	await process_frame
 	scene.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout

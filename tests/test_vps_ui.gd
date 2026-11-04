@@ -60,8 +60,10 @@ func run() -> void:
 	press("Создать комнату на сервере")
 	await until(func(): return scene.page == "lobby", "Remote lobby")
 	check(scene.network.is_admin() and not scene.network.hosting, "Remote administrator controls are available")
-	press("Добавить бота")
-	await until(func(): return scene.network.players.size() == 2, "Roster refresh")
+	for input in scene.overlay.find_children("*", "LineEdit", true, false):
+		if input.accessibility_name == scene.L.text("Количество ботов"): input.text = "10"
+	press("Добавить ботов")
+	await until(func(): return scene.network.players.size() == 11, "Custom bot count refresh beyond the old eight-player limit")
 	await capture("vps-lobby-preview")
 	if DisplayServer.get_name() != "headless":
 		press("Скопировать приглашение")

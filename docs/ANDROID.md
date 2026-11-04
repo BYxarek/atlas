@@ -8,7 +8,7 @@ Install `Atlas-Android.apk` from Releases. Install updates over the previous app
 
 ## Build and signing
 
-First run the full build to obtain the pinned editor or place the Godot 4.7.2 Windows editor in `tools`. Configure Android SDK and JDK, then:
+First run the full build to obtain the pinned editor or run `python tools/fetch_windows_template.py` to install the verified tools. Configure Android SDK and JDK, then:
 
 ```powershell
 $env:ATLAS_ANDROID_SDK = 'C:/path/to/Android/Sdk'
@@ -20,8 +20,12 @@ The helper downloads the release template when missing, exports, signs, checks t
 
 A first build generates a signing key and config in `%USERPROFILE%/.atlas/signing`: `android-release.jks` and `android-release.json`. **Back up both privately.** Future install-over updates need the same key and an increasing Android version code. Forks should use their own signing key and package ID. Never commit signing credentials.
 
-Version name is `0.1.0`. Android version code is `11` so this APK can update the earlier local builds with codes `9` and `10`, despite the public version-number reset.
+Version name is `0.2.0`. Android version code is `13`, preserving updates from version code `12`. The existing signing identity is retained.
 
 ## Validation limits
 
 Release signature and library checks pass; mobile UI and network scenarios run in native desktop Godot. No physical Android device was available for this release, and the local emulator could not boot without a hypervisor driver. GPU compatibility, software keyboard, system gestures and lifecycle behavior still need a real-device test.
+
+## Emulator follow-up
+
+See [2026-11-05 validation](ANDROID_VALIDATION_2026-11-05.md) for the API 37 Android Studio emulator run, passed journeys and remaining IME/SwiftShader limitations.

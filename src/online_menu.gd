@@ -92,7 +92,7 @@ func show_lan_browser() -> void:
 	number.value = port
 	number.value_changed.connect(func(value): port = int(value))
 	row.add_child(number)
-	row = HBoxContainer.new()
+	row = VBoxContainer.new() if ui.mobile else HBoxContainer.new()
 	ui.menu_body.add_child(row)
 	row.add_child(ui.button(L.text("Создать лобби"), func(): open_host(""), true))
 	row.add_child(ui.button(L.text("Подключиться"), func():
@@ -141,7 +141,7 @@ func refresh_server_rooms() -> void:
 	for entry in net.directory_rooms:
 		var box = ui.box_panel(rooms)
 		box.add_child(ui.paragraph(entry.name + (L.text(" · ваша партия") if entry.member else ""), ui.MINT if entry.member else ui.INK, 16))
-		box.add_child(ui.paragraph(L.text("%d/8 · %s · %s · код %s") % [entry.players, L.text("идёт матч") if entry.stage == "game" else L.text("лобби"), ui.time_text(entry.elapsed), entry.id], ui.MUTED, 11))
+		box.add_child(ui.paragraph(L.text("%d/176 · %s · %s · код %s") % [entry.players, L.text("идёт матч") if entry.stage == "game" else L.text("лобби"), ui.time_text(entry.elapsed), entry.id], ui.MUTED, 11))
 		var row = HBoxContainer.new()
 		box.add_child(row)
 		var join = ui.button(L.text("Вернуться") if entry.member else L.text("Войти"), func(): net.directory_request("join", [entry.id]), true)
@@ -155,7 +155,7 @@ func refresh_lan_rooms() -> void:
 	rooms.add_child(ui.label(L.text("ЛОКАЛЬНЫЕ ЛОББИ"), 12, ui.MINT))
 	if net.found.is_empty(): rooms.add_child(ui.paragraph(L.text("Пока не найдены. Хост и игроки должны находиться в одной сети.")))
 	for entry in net.found:
-		rooms.add_child(ui.button("%s · %d/8 · %s:%d · %s" % [entry.name, entry.players, entry.address, entry.port, L.text("в игре") if entry.stage == "game" else L.text("лобби")], func():
+		rooms.add_child(ui.button("%s · %d/176 · %s:%d · %s" % [entry.name, entry.players, entry.address, entry.port, L.text("в игре") if entry.stage == "game" else L.text("лобби")], func():
 			var error = net.join_room(entry.address, nickname, int(entry.port))
 			if error != OK: ui.message(L.text("Подключение"), error_string(error))
 			else: show_connecting()))
@@ -178,7 +178,7 @@ func show_lobby() -> void:
 	ui.page = "lobby"
 	ui.game.paused = true
 	ui.sound.sync()
-	ui.menu_frame(net.lobby_name, L.text("Лобби · %d/8%s") % [net.players.size(), L.text(" · вы администратор") if net.is_admin() else ""], 820, 800)
+	ui.menu_frame(net.lobby_name, L.text("Лобби · %d/176%s") % [net.players.size(), L.text(" · вы администратор") if net.is_admin() else ""], 820, 800)
 	if net.directory_client:
 		ui.menu_body.add_child(ui.button(L.text("Скопировать приглашение"), func(): DisplayServer.clipboard_set(net.server_url + " · " + net.room_id)))
 	ui.menu_body.add_child(ui.paragraph(L.render(net.status), ui.GOLD, 12))
@@ -228,9 +228,20 @@ func show_lobby() -> void:
 	ready.toggled.connect(func(value): net.request("ready", [value]))
 	ui.menu_body.add_child(ready)
 	if net.is_admin():
-		var row = HBoxContainer.new()
+		var row = VBoxContainer.new() if ui.mobile else HBoxContainer.new()
 		ui.menu_body.add_child(row)
-		var bot = ui.button(L.text("Добавить бота"), func(): net.request("bot"))
+		var count = LineEdit.new()
+		count.text = "1"
+		count.placeholder_text = "1–%d" % (net.MAX_PLAYERS - net.players.size())
+		count.accessibility_name = L.text("Количество ботов")
+		count.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+		count.custom_minimum_size.x = 100
+		row.add_child(count)
+		var bot = ui.button(L.text("Добавить ботов"), func():
+			if not count.text.is_valid_int() or int(count.text) < 1 or int(count.text) + net.players.size() > net.MAX_PLAYERS:
+				ui.message(L.text("Количество ботов"), L.text("Игроков и ботов не может быть больше, чем стран: %d.") % net.MAX_PLAYERS)
+				return
+			net.request("bot", [int(count.text)]))
 		bot.disabled = net.players.size() >= net.MAX_PLAYERS
 		row.add_child(bot)
 		var start = ui.button(L.text("Продолжить матч") if net.world != null or net.resuming else L.text("Начать матч"), func(): net.request("start"), true)

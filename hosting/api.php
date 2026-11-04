@@ -5,6 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 require __DIR__.'/service.php';
+$started=hrtime(true);
 try {
     if ($_SERVER['REQUEST_METHOD']!=='POST') { http_response_code(405); throw new DomainException('Use POST'); }
     if ((int)($_SERVER['CONTENT_LENGTH']??0)>8192) { http_response_code(413); throw new DomainException('Request too large'); }
@@ -23,4 +24,7 @@ try {
 } catch (Throwable $error) {
     error_log('ATLAS PHP: '.$error->getMessage()); http_response_code(503);
     echo json_encode(['ok'=>false,'error'=>'Хранилище сервера недоступно. Обратитесь к владельцу.']);
+} finally {
+    if ($config['metrics']??false) error_log('ATLAS request '.json_encode([
+        'request_ms'=>round((hrtime(true)-$started)/1e6,3),'status'=>http_response_code()]));
 }

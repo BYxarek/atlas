@@ -14,7 +14,7 @@ from fetch_php import php_binary
 
 root=Path(__file__).resolve().parent.parent
 php=php_binary()
-godot=root/'tools/Godot_v4.7.2-stable_win64.exe'
+godot=root/'tools/godot-4.8-beta2/Godot_v4.8-beta2_win64.exe'
 processes=[]
 logs=[]
 
@@ -34,6 +34,11 @@ def wait_server(process):
     raise TimeoutError('PHP startup')
 
 try:
+    # Refuse to run fixture clients against an unrelated server already on this port.
+    with socket.socket() as probe:
+        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        probe.bind(('127.0.0.1', 30761))
     subprocess.run([str(godot),'--headless','--path',str(root),'--script','tests/php_fixtures.gd'],check=True)
     subprocess.run([str(php),'tests/test_php.php'],check=True)
     with tempfile.TemporaryDirectory(prefix='atlas-php-') as temporary:

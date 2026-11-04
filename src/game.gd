@@ -6,11 +6,12 @@ signal sound_requested(cue: String)
 
 const SAVE_PATH = "user://campaign.json"
 const UNIT_NAMES = ["Пехота", "Авиация", "Флот"]
-const UNIT_COST = [12, 28, 36]
-const UNIT_WEIGHT = [1.0, 3.0, 4.0]
-const NUCLEAR_THRESHOLD = 10
-const START_UNITS = [35, 8, 4]
-const START_COINS = 180.0
+static var B: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/balance.json"))
+static var UNIT_COST = B.unit_cost
+static var UNIT_WEIGHT = B.unit_weight
+static var NUCLEAR_THRESHOLD: int = int(B.nuclear_threshold)
+static var START_UNITS: Array = B.start_units.map(func(n): return int(n))
+static var START_COINS = B.start_coins
 var atlas: Array = []
 var military: Dictionary = {}
 var countries: Array = []
@@ -41,6 +42,9 @@ var enemy_levels: Dictionary = {}
 var country_colors: Dictionary = {}
 var country_owners: Dictionary = {}
 var remote_operations: Array = []
+var wars: Array = []
+var rebel_bonus = 1
+var battles: Array = []
 
 func _init() -> void:
 	atlas = JSON.parse_string(FileAccess.get_file_as_string("res://assets/world.json"))
@@ -54,6 +58,8 @@ func reset() -> void:
 	country_colors = {}
 	country_owners = {}
 	remote_operations = []
+	wars = []
+	battles = []
 	countries.clear()
 	for i in atlas.size():
 		var local_rng = RandomNumberGenerator.new()
@@ -113,7 +119,7 @@ func income() -> int:
 func power(army: Array, upgrades: Array = [1, 1, 1]) -> float:
 	var result = 0.0
 	for i in 3:
-		result += army[i] * UNIT_WEIGHT[i] * (1.0 + (upgrades[i] - 1) * 0.25)
+		result += army[i] * UNIT_WEIGHT[i] * (1.0 + (upgrades[i] - 1) * B.technology_bonus)
 	return result
 
 func migrate_legacy_armies() -> int:
@@ -144,12 +150,12 @@ func recruit(kind: int) -> bool:
 	if not can_act() or kind < 0 or kind > 2 or coins < UNIT_COST[kind]:
 		return false
 	coins -= UNIT_COST[kind]
-	units[kind] += [10, 3, 2][kind]
+	units[kind] += int(B.recruit_units[kind])
 	sound_requested.emit("coins")
 	return true
 
 func upgrade_cost(kind: int) -> int:
-	return 65 * levels[kind]
+	return int(B.technology_cost) * levels[kind]
 
 func upgrade_army(kind: int) -> bool:
 	if not can_act() or kind < 0 or kind > 2 or coins < upgrade_cost(kind):
@@ -161,7 +167,7 @@ func upgrade_army(kind: int) -> bool:
 	return true
 
 func business_cost(id: int, slot: int) -> int:
-	return 25 * countries[id].businesses[slot]
+	return int(B.business_cost) * countries[id].businesses[slot]
 
 func upgrade_business(id: int, slot: int) -> bool:
 	if not can_act() or id < 0 or id >= countries.size() or not countries[id].owned:
@@ -174,16 +180,16 @@ func upgrade_business(id: int, slot: int) -> bool:
 	return true
 
 func spy(id: int) -> bool:
-	if not can_act() or id < 0 or id >= countries.size() or countries[id].owned or not mission.is_empty() or coins < 20:
+	if not can_act() or id < 0 or id >= countries.size() or countries[id].owned or not mission.is_empty() or coins < B.spy_cost:
 		return false
-	coins -= 20
-	mission = {"target": id, "from": origin_for(id), "start": elapsed, "arrival": elapsed + 6}
-	log_event("Агент направлен: %s. Отчёт через 6 секунд." % atlas[id].name)
+	coins -= B.spy_cost
+	mission = {"target": id, "from": origin_for(id), "start": elapsed, "arrival": elapsed + int(B.spy_seconds)}
+	log_event("Агент направлен: %s. Отчёт через %d секунд." % [atlas[id].name, B.spy_seconds])
 	sound_requested.emit("spy_send")
 	return true
 
 func attack_cost(id: int) -> int:
-	return 25 if border(id) else 55
+	return int(B.attack_cost if border(id) else B.naval_cost)
 
 func attack_block(id: int) -> String:
 	if not can_act():
@@ -192,8 +198,8 @@ func attack_block(id: int) -> String:
 		return "Выберите чужую страну"
 	if has_operation("attack"):
 		return "Армия уже на марше"
-	if not border(id) and units[2] < 4:
-		return "Для морской операции нужно 4 корабля"
+	if not border(id) and units[2] < B.naval_ships:
+		return "Для морской операции нужно %d кораблей" % B.naval_ships
 	if power(units, levels) < 1:
 		return "Наберите войска"
 	if coins < attack_cost(id):
@@ -210,11 +216,20 @@ func resolve_attack(id: int, overseas: bool) -> Dictionary:
 	if countries[id].owned:
 		return {}
 	sound_requested.emit("battle_naval" if overseas else "battle")
+	if not id in wars: wars.append(id)
+	var attackers = units.duplicate()
+	var defenders = countries[id].units.duplicate()
+	var defender_levels = enemy_levels.get(str(id), [1, 1, 1])
+	var support = 0
 	var strength = power(units, levels)
 	var defense = power(countries[id].units, enemy_levels.get(str(id), [1, 1, 1]))
-	var effective = strength * (0.85 if overseas else 1.0)
+	if rebel_country(id):
+		support = rebel_bonus if network_game else rng.randi_range(1, 10)
+		defense *= 1.0 - support / 100.0
+		log_event("Повстанцы в %s помогли наступлению: сила обороны снижена на %d%%." % [atlas[id].name, support])
+	var effective = strength * (B.naval_multiplier if overseas else 1.0)
 	var victory = effective >= defense
-	var loss_rate = clampf(defense / maxf(effective, 1.0) * 0.23, 0.04, 0.55)
+	var loss_rate = clampf(defense / maxf(effective, 1.0) * B.attack_loss, B.attack_loss_min, B.attack_loss_max)
 	var losses: Array = []
 	for i in 3:
 		var lost = mini(units[i], ceili(units[i] * loss_rate))
@@ -223,25 +238,35 @@ func resolve_attack(id: int, overseas: bool) -> Dictionary:
 	if victory:
 		victories += 1
 		countries[id].owned = true
+		if not network_game and rebel_country(id): countries[id]["rebellion"] = {"previous_owned": false, "due": elapsed + rng.randi_range(120, 420)}
 		if id != home and not id in conquests:
 			conquests.append(id)
 			if conquests.size() % NUCLEAR_THRESHOLD == 0:
 				nukes += 1
 				log_event("Ядерный арсенал: получен 1 удар за %d уникальных захватов." % conquests.size())
 				sound_requested.emit("unlock")
-		coins += 30
-		log_event("Победа! %s под вашим контролем. Трофеи: 30 монет." % atlas[id].name)
+		coins += B.loot
+		log_event("Победа! %s под вашим контролем. Трофеи: %d монет." % [atlas[id].name, B.loot])
 		if owned_count() == countries.size():
 			finished = true
 			log_event("МИР ОБЪЕДИНЁН. Вы завершили мировую кампанию!")
 	else:
 		defeats += 1
 		for i in 3:
-			countries[id].units[i] = maxi(0, countries[id].units[i] - ceili(countries[id].units[i] * 0.12))
+			countries[id].units[i] = maxi(0, countries[id].units[i] - ceili(countries[id].units[i] * B.defender_hold_loss))
 		log_event("Отступление из %s. Усильте армию перед новой атакой." % atlas[id].name)
+	var defender_losses = defenders.map(func(n): return ceili(n * (B.defender_retreat_loss if victory and network_game and enemy_levels.has(str(id)) else (1.0 if victory else B.defender_hold_loss))))
+	record_battle(id, true, victory, attackers, defenders, levels, defender_levels, effective, defense, overseas, support, losses, defender_losses)
 	effects.append({"kind": "victory" if victory else "defeat", "target": id})
 	sound_requested.emit("campaign_win" if finished else ("victory" if victory else "defeat"))
 	return {"victory": victory, "losses": losses, "overseas": overseas}
+
+func record_battle(target: int, attacking: bool, won: bool, attackers: Array, defenders: Array, attack_levels: Array, defense_levels: Array, effective: float, defense: float, overseas: bool, rebels: int, attack_losses: Array, defense_losses: Array) -> void:
+	battles.push_front({"target": target, "time": elapsed, "attacking": attacking, "won": won,
+		"attackers": attackers.duplicate(), "defenders": defenders.duplicate(), "attack_levels": attack_levels.duplicate(),
+		"defense_levels": defense_levels.duplicate(), "effective": effective, "defense": defense,
+		"overseas": overseas, "rebels": rebels, "attack_losses": attack_losses.duplicate(), "defense_losses": defense_losses.duplicate()})
+	if battles.size() > 20: battles.resize(20)
 
 func origin_for(id: int) -> int:
 	for neighbor in atlas[id].neighbors:
@@ -261,9 +286,10 @@ func dispatch_attack(id: int) -> bool:
 	if attack_block(id) != "":
 		return false
 	coins -= attack_cost(id)
+	if not id in wars: wars.append(id)
 	operations.append({"kind": "attack", "from": origin_for(id), "target": id,
-		"start": elapsed, "arrival": elapsed + 4, "overseas": not border(id)})
-	log_event("Армия выдвинулась: %s. Прибытие через 4 секунды." % atlas[id].name)
+		"start": elapsed, "arrival": elapsed + int(B.attack_seconds), "overseas": not border(id)})
+	log_event("Армия выдвинулась: %s. Прибытие через %d секунд." % [atlas[id].name, B.attack_seconds])
 	sound_requested.emit("march_naval" if not border(id) else "march")
 	return true
 
@@ -272,27 +298,29 @@ func nuclear_strike(id: int) -> bool:
 		return false
 	nukes -= 1
 	operations.append({"kind": "nuke", "from": origin_for(id), "target": id,
-		"start": elapsed, "arrival": elapsed + 3})
-	log_event("Ядерная ракета запущена: %s. Подлёт — 3 секунды." % atlas[id].name)
+		"start": elapsed, "arrival": elapsed + int(B.nuke_seconds)})
+	log_event("Ядерная ракета запущена: %s. Подлёт — %d секунд." % [atlas[id].name, B.nuke_seconds])
 	sound_requested.emit("rocket_launch")
 	return true
 
-func launch_enemy_attack(attacker: int, target: int) -> bool:
+func launch_enemy_attack(attacker: int, target: int, surprise: bool = false) -> bool:
 	if not can_act() or owned_count() <= 1 or has_operation("enemy") or attacker < 0 or attacker >= countries.size() or target < 0 or target >= countries.size():
 		return false
 	var warning = pending_warning()
-	if warning.is_empty() or int(warning.attacker) != attacker or elapsed < warning.deadline or elapsed - warning.issued > 300:
+	if not surprise and (warning.is_empty() or int(warning.attacker) != attacker or elapsed < warning.deadline or elapsed - warning.issued > 300):
 		return false
 	if countries[attacker].owned or not countries[target].owned:
 		return false
 	var overseas = not atlas[attacker].neighbors.any(func(neighbor): return int(neighbor) == target)
-	if overseas and countries[attacker].units[2] < 4:
+	if overseas and countries[attacker].units[2] < B.naval_ships:
 		return false
-	warning.status = "launched"
+	if not surprise: warning.status = "launched"
 	operations.append({"kind": "enemy", "from": attacker, "target": target,
-		"start": elapsed, "arrival": elapsed + 5, "overseas": overseas})
-	log_event("ТРЕВОГА: %s атакует %s. До боя — 5 секунд!" % [enemy_name(attacker), atlas[target].name])
-	sound_requested.emit("invasion")
+		"start": elapsed, "arrival": elapsed + 5, "overseas": overseas, "surprise": surprise})
+	if not surprise:
+		if not attacker in wars: wars.append(attacker)
+		log_event("ТРЕВОГА: %s атакует %s. До боя — 5 секунд!" % [enemy_name(attacker), atlas[target].name])
+		sound_requested.emit("invasion")
 	return true
 
 func resolve_enemy_attack(attacker: int, target: int, overseas: bool) -> void:
@@ -304,16 +332,22 @@ func resolve_enemy_attack(attacker: int, target: int, overseas: bool) -> void:
 		sound_requested.emit("all_clear")
 		return
 	sound_requested.emit("battle_naval" if overseas else "battle")
-	var assault = power(countries[attacker].units) * (0.85 if overseas else 1.0)
+	if not attacker in wars: wars.append(attacker)
+	var attackers = countries[attacker].units.duplicate()
+	var defenders = units.duplicate()
+	var assault = power(countries[attacker].units) * (B.naval_multiplier if overseas else 1.0)
 	var defense = power(units, levels)
 	var lost_territory = assault > defense
 	var loss_rate = clampf(assault / maxf(defense, 1.0) * 0.2, 0.04, 0.6)
 	for i in 3:
 		units[i] = maxi(0, units[i] - ceili(units[i] * loss_rate))
 		countries[attacker].units[i] = maxi(0, countries[attacker].units[i] - ceili(countries[attacker].units[i] * (0.12 if lost_territory else 0.35)))
+	record_battle(target, false, not lost_territory, attackers, defenders, [1, 1, 1], levels, assault, defense, overseas, 0, attackers.map(func(n): return ceili(n * (0.12 if lost_territory else 0.35))), [defenders[0] - units[0], defenders[1] - units[1], defenders[2] - units[2]])
 	if lost_territory:
 		defeats += 1
 		countries[target].owned = false
+		if not target in wars: wars.append(target)
+		if rebel_country(target): countries[target]["rebellion"] = {"previous_owned": true, "due": elapsed + rng.randi_range(120, 420)}
 		# Half the surviving attackers stay behind as the new garrison.
 		for i in 3:
 			var garrison = floori(countries[attacker].units[i] * 0.5)
@@ -391,7 +425,9 @@ func tick() -> bool:
 		var target = int(op.target)
 		match op.kind:
 			"attack": resolve_attack(target, op.overseas)
-			"enemy": resolve_enemy_attack(int(op.from), target, op.overseas)
+			"enemy":
+				if op.get("surprise", false): log_event("Внезапное нападение на %s!" % atlas[target].name)
+				resolve_enemy_attack(int(op.from), target, op.overseas)
 			"nuke":
 				if countries[target].owned:
 					nukes += 1
@@ -418,6 +454,22 @@ func tick() -> bool:
 		sound_requested.emit("report")
 		changed = true
 	if network_game: return changed
+	for id in countries.size():
+		var rebellion = countries[id].get("rebellion", {})
+		if rebellion.is_empty() or elapsed < rebellion.due: continue
+		rebellion.due = elapsed + rng.randi_range(120, 420)
+		if rng.randf() >= 0.2: continue
+		countries[id].owned = rebellion.previous_owned
+		if not id in wars: wars.append(id)
+		countries[id].erase("rebellion")
+		log_event("Повстанцы вернули %s прежнему владельцу." % atlas[id].name)
+		sound_requested.emit("victory" if countries[id].owned else "defeat")
+		changed = true
+	finished = owned_count() == 0 or owned_count() == countries.size()
+	if finished:
+		operations.clear()
+		mission = {}
+		return true
 	if elapsed % 30 == 0:
 		for c in countries:
 			if not c.owned:
@@ -438,7 +490,12 @@ func tick() -> bool:
 				sound_requested.emit("all_clear")
 			changed = true
 	elif elapsed % 45 == 0:
-		changed = schedule_warning() or changed
+		if owned_count() > 1 and rng.randf() < 0.2:
+			var candidates = range(countries.size()).filter(func(id): return not countries[id].owned and (border(id) or countries[id].units[2] >= 4))
+			if not candidates.is_empty():
+				var attacker = candidates[rng.randi_range(0, candidates.size() - 1)]
+				changed = launch_enemy_attack(attacker, origin_for(attacker), true) or changed
+		else: changed = schedule_warning() or changed
 	return changed
 
 func log_event(message: String) -> void:
@@ -454,7 +511,10 @@ func export_data() -> Dictionary:
 		"campaign_id": campaign_id, "operations": operations, "conquests": conquests,
 		"nukes": nukes, "victories": victories, "defeats": defeats, "warnings": warnings,
 		"notification_serial": notification_serial, "notifications_seen": notifications_seen,
-		"military_balance": military.balance_version}
+		"military_balance": military.balance_version, "wars": wars, "battles": battles, "rules_version": B.version}
+
+func rebel_country(id: int) -> bool:
+	return id % 3 == 0 and power(military.armies[id]) >= 300
 
 func save_game(path: String = SAVE_PATH) -> Error:
 	if home < 0:
@@ -495,11 +555,23 @@ func load_game(path: String = SAVE_PATH) -> bool:
 func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 	if not data is Dictionary or (data.get("version") != 1 and data.get("version") != 2 and data.get("version") != 3):
 		return false
+	if data.get("rules_version", B.version) != B.version: return false
 	for key in ["home", "coins", "elapsed"]:
 		if not (data.get(key) is float or data.get(key) is int) or not is_finite(float(data[key])):
 			return false
 	if data.home < 0 or data.home >= countries.size() or data.home != floorf(data.home) or data.coins < 0 or data.coins > 1e12 or data.elapsed < 0 or data.elapsed > 1e9 or data.elapsed != floorf(data.elapsed):
 		return false
+	var saved_battles = data.get("battles", [])
+	if not saved_battles is Array or saved_battles.size() > 20: return false
+	for battle in saved_battles:
+		if not battle is Dictionary: return false
+		if not valid_numbers([battle.get("target"), battle.get("time"), battle.get("rebels")], 3) or battle.target >= countries.size() or battle.time > data.elapsed or battle.rebels > 10: return false
+		for key in ["attacking", "won", "overseas"]:
+			if not battle.get(key) is bool: return false
+		for key in ["attackers", "defenders", "attack_losses", "defense_losses", "attack_levels", "defense_levels"]:
+			if not valid_numbers(battle.get(key), 3, 1 if key.ends_with("levels") else 0): return false
+		for key in ["effective", "defense"]:
+			if not (battle.get(key) is int or battle.get(key) is float) or not is_finite(float(battle[key])) or battle[key] < 0 or battle[key] > 1e18: return false
 	if not valid_numbers(data.get("units"), 3) or not valid_numbers(data.get("levels"), 3, 1):
 		return false
 	if not data.get("countries") is Array or data.countries.size() != countries.size():
@@ -509,11 +581,18 @@ func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 			return false
 		if not c.get("businesses") is Array or c.businesses.size() < 1 or c.businesses.size() > 5 or not valid_numbers(c.businesses, c.businesses.size(), 1):
 			return false
+		var rebellion = c.get("rebellion", {})
+		if not rebellion is Dictionary: return false
+		if not rebellion.is_empty() and (not rebellion.get("previous_owned") is bool or not valid_numbers([rebellion.get("due")], 1) or rebellion.due > data.elapsed + 420): return false
 	var saved_mission = data.get("mission", {})
+	var saved_wars = data.get("wars", [])
+	if not saved_wars is Array or saved_wars.size() > countries.size() or not valid_numbers(saved_wars, saved_wars.size()): return false
+	for id in saved_wars:
+		if id >= countries.size(): return false
 	if not saved_mission is Dictionary:
 		return false
 	if not saved_mission.is_empty():
-		if not valid_numbers([saved_mission.get("target"), saved_mission.get("arrival")], 2) or saved_mission.target >= countries.size() or saved_mission.arrival > data.elapsed + 6:
+		if not valid_numbers([saved_mission.get("target"), saved_mission.get("arrival")], 2) or saved_mission.target >= countries.size() or saved_mission.arrival > data.elapsed + int(B.spy_seconds):
 			return false
 		if not valid_numbers([saved_mission.get("from", data.home), saved_mission.get("start", maxi(0, int(saved_mission.arrival) - 6))], 2) or saved_mission.get("from", data.home) >= countries.size() or saved_mission.get("start", 0) > data.elapsed:
 			return false
@@ -554,10 +633,11 @@ func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 			return false
 		if not valid_numbers([op.get("from"), op.get("target"), op.get("start"), op.get("arrival")], 4):
 			return false
-		if op.from >= countries.size() or op.target >= countries.size() or op.start > data.elapsed or op.arrival <= op.start or op.arrival > data.elapsed + 6:
+		if op.from >= countries.size() or op.target >= countries.size() or op.start > data.elapsed or op.arrival <= op.start or op.arrival > data.elapsed + int(B.spy_seconds):
 			return false
 		if op.kind != "nuke" and not op.get("overseas") is bool:
 			return false
+		if not op.get("surprise", false) is bool: return false
 		kinds.append(op.kind)
 	var saved_events = data.get("events", [])
 	if not saved_events is Array or saved_events.size() > 40:
@@ -582,7 +662,7 @@ func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 	if not valid_numbers([saved_serial, saved_seen], 2) or saved_seen > saved_serial: return false
 	if data.version == 3:
 		for op in saved_ops:
-			if op.kind == "enemy" and not saved_warnings.any(func(w): return w.status == "launched" and w.attacker == op.from and w.deadline <= op.start and op.start - w.issued <= 300): return false
+			if op.kind == "enemy" and not op.get("surprise", false) and not saved_warnings.any(func(w): return w.status == "launched" and w.attacker == op.from and w.deadline <= op.start and op.start - w.issued <= 300): return false
 	else:
 		# Legacy surprise invasions cannot bypass the new one-minute warning rule.
 		saved_ops = saved_ops.filter(func(op): return op.kind != "enemy")
@@ -611,6 +691,8 @@ func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 	victories = int(data.get("victories", 0))
 	defeats = int(data.get("defeats", 0))
 	operations = saved_ops
+	battles = saved_battles.duplicate(true)
+	wars = saved_wars.map(func(id): return int(id))
 	warnings = saved_warnings
 	notification_serial = int(saved_serial)
 	notifications_seen = int(saved_seen)
