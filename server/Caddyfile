@@ -1,0 +1,7 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$ATLAS_DOMAIN} {
+	reverse_proxy atlas:24760
+}

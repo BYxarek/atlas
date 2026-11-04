@@ -1,0 +1,228 @@
+<?php
+declare(strict_types=1);
+
+final class AtlasWorld {
+    private array $map;
+    private ?int $commandTime = null;
+    public function __construct() {
+        $this->map = json_decode(file_get_contents(__DIR__.'/data.json'), true, 64, JSON_THROW_ON_ERROR);
+    }
+    public function create(): array {
+        return ['elapsed'=>0, 'countries'=>$this->map['countries'], 'owners'=>array_fill(0,176,''), 'factions'=>[]];
+    }
+    public function add(array &$w, string $slot, int $home, string $color): void {
+        if ($w['owners'][$home] !== '') throw new DomainException('Страна уже занята.');
+        $w['owners'][$home]=$slot;
+        $w['factions'][$slot]=['home'=>$home,'coins'=>180,'units'=>[35,8,4],'levels'=>[1,1,1],
+            'mission'=>[], 'reports'=>[], 'events'=>[], 'player_color'=>$color, 'campaign_id'=>'php_'.$slot,
+            'operations'=>[], 'conquests'=>[], 'nukes'=>0, 'victories'=>0,'defeats'=>0,
+            'notification_serial'=>0,'notifications_seen'=>0,'sounds'=>['start'],'effects'=>[]];
+        $this->event($w,$slot,'Поднят ваш флаг: '.$this->name($home).'. История начинается.');
+    }
+    public function remove(array &$w, string $slot): void {
+        if (!isset($w['factions'][$slot])) return;
+        $count=max(1,count(array_filter($w['owners'],fn($owner)=>$owner===$slot)));
+        foreach ($w['owners'] as $id=>$owner) if ($owner===$slot) {
+            $w['countries'][$id]['units']=array_map(fn($n)=>intdiv($n,$count),$w['factions'][$slot]['units']);
+            $w['owners'][$id]='';
+        }
+        unset($w['factions'][$slot]);
+    }
+    private function name(int $id): string { return $this->map['atlas'][$id]['name']; }
+    public function power(array $army, array $levels=[1,1,1]): float {
+        $power=0;
+        foreach ([1,3,4] as $i=>$weight) $power += $army[$i]*$weight*(1+($levels[$i]-1)*0.25);
+        return $power;
+    }
+    private function event(array &$w,string $slot,string $text): void {
+        $g=&$w['factions'][$slot];
+        $g['notification_serial']++;
+        array_unshift($g['events'],['time'=>$this->commandTime??$w['elapsed'],'text'=>$text]);
+        $g['events']=array_slice($g['events'],0,40);
+    }
+    private function cue(array &$w,string $slot,string $sound,?int $target=null,?string $effect=null): void {
+        $g=&$w['factions'][$slot];
+        if (count($g['sounds'])<40) $g['sounds'][]=$sound;
+        if ($effect!==null && count($g['effects'])<40) $g['effects'][]=['kind'=>$effect,'target'=>$target];
+    }
+    private function alive(array $w,string $slot): bool {
+        return in_array($slot,$w['owners'],true) && count(array_unique($w['owners']))>1;
+    }
+    private function border(array $w,string $slot,int $id): bool {
+        foreach ($this->map['atlas'][$id]['neighbors'] as $n) if ($w['owners'][$n]===$slot) return true;
+        return false;
+    }
+    private function origin(array $w,string $slot,int $target): int {
+        foreach ($this->map['atlas'][$target]['neighbors'] as $id) if ($w['owners'][$id]===$slot) return (int)$id;
+        $home=$w['factions'][$slot]['home'];
+        return $w['owners'][$home]===$slot ? $home : (int)array_search($slot,$w['owners'],true);
+    }
+    private function army(array $w,int $id): array {
+        $owner=$w['owners'][$id];
+        return $owner==='' ? $w['countries'][$id]['units'] : $w['factions'][$owner]['units'];
+    }
+    private function has(array $g,string $kind): bool {
+        return count(array_filter($g['operations'],fn($op)=>$op['kind']===$kind))>0;
+    }
+    private function attackable(array $w,string $slot,int $id): bool {
+        $g=$w['factions'][$slot];
+        $land=$this->border($w,$slot,$id);
+        return $w['owners'][$id]!==$slot && !$this->has($g,'attack') && ($land || $g['units'][2]>=4)
+            && $this->power($g['units'],$g['levels'])>=1 && $g['coins']>=($land?25:55);
+    }
+    public function command(array &$w,string $slot,string $action,array $args): bool {
+        if (!isset($w['factions'][$slot]) || !$this->alive($w,$slot) || count($args)>2) return false;
+        foreach ($args as $arg) if (!is_int($arg) || $arg<0 || $arg>=176) return false;
+        $g=&$w['factions'][$slot];
+        $i=$args[0]??-1;
+        if ($action==='read' && !$args) { $g['notifications_seen']=$g['notification_serial']; return true; }
+        if (in_array($action,['recruit','upgrade'],true) && count($args)===1 && $i<3) {
+            $cost=$action==='recruit'?[12,28,36][$i]:65*$g['levels'][$i];
+            if ($g['coins']<$cost || $g['units'][$i]>99999980 || $g['levels'][$i]>=1000000) return false;
+            $g['coins']-=$cost;
+            if ($action==='recruit') $g['units'][$i]+=[10,3,2][$i];
+            else {
+                $g['levels'][$i]++;
+                $this->event($w,$slot,['Пехота','Авиация','Флот'][$i].': технология уровня '.$g['levels'][$i].'.');
+            }
+            $this->cue($w,$slot,$action==='recruit'?'coins':'upgrade'); return true;
+        }
+        if ($action==='business' && count($args)===2 && $w['owners'][$i]===$slot) {
+            $j=$args[1];
+            if (!isset($w['countries'][$i]['businesses'][$j])) return false;
+            $level=&$w['countries'][$i]['businesses'][$j];
+            if ($g['coins']<25*$level || $level>=1000000) return false;
+            $g['coins']-=25*$level; $level++; $this->cue($w,$slot,'coins'); return true;
+        }
+        if (count($args)!==1 || $w['owners'][$i]===$slot) return false;
+        $time=$this->commandTime??$w['elapsed'];
+        $op=['target'=>$i,'from'=>$this->origin($w,$slot,$i),'start'=>$time];
+        if ($action==='spy' && !$g['mission'] && $g['coins']>=20) {
+            $g['coins']-=20; $op['arrival']=$time+6; $g['mission']=$op;
+            $this->event($w,$slot,'Агент направлен: '.$this->name($i).'. Отчёт через 6 секунд.');
+            $this->cue($w,$slot,'spy_send'); return true;
+        }
+        if ($action==='attack' && $this->attackable($w,$slot,$i)) {
+            $land=$this->border($w,$slot,$i); $g['coins']-=$land?25:55;
+            $op+=['kind'=>'attack','arrival'=>$time+4,'overseas'=>!$land]; $g['operations'][]=$op;
+            $this->event($w,$slot,'Армия выдвинулась: '.$this->name($i).'. Прибытие через 4 секунды.');
+            $this->cue($w,$slot,$land?'march':'march_naval'); return true;
+        }
+        if ($action==='nuke' && $g['nukes']>0 && !$this->has($g,'nuke')) {
+            $g['nukes']--; $op+=['kind'=>'nuke','arrival'=>$time+3]; $g['operations'][]=$op;
+            $this->event($w,$slot,'Ядерная ракета запущена: '.$this->name($i).'. Подлёт — 3 секунды.');
+            $this->cue($w,$slot,'rocket_launch'); return true;
+        }
+        return false;
+    }
+    private function resolve(array &$w,string $slot,array $op): void {
+        $id=$op['target']; $owner=$w['owners'][$id]; $g=&$w['factions'][$slot];
+        if ($owner===$slot) {
+            if ($op['kind']==='nuke') { $g['nukes']++; $this->event($w,$slot,'Ядерный удар отменён: цель уже ваша. Заряд возвращён.'); }
+            return;
+        }
+        if ($owner==='') $defender=&$w['countries'][$id]['units'];
+        else $defender=&$w['factions'][$owner]['units'];
+        if ($op['kind']==='nuke') {
+            foreach ($defender as &$n) $n=(int)floor($n*0.5);
+            unset($n);
+            $text='Ядерный удар по '.$this->name($id).': армия потеряла 50% состава.';
+            $this->event($w,$slot,$text); $this->cue($w,$slot,'nuke',$id,'nuke');
+            if ($owner!=='') { $this->event($w,$owner,$text); $this->cue($w,$owner,'nuke',$id,'nuke'); }
+            return;
+        }
+        $this->cue($w,$slot,$op['overseas']?'battle_naval':'battle');
+        $effective=$this->power($g['units'],$g['levels'])*($op['overseas']?0.85:1);
+        $defense=$this->power($defender,$owner===''?[1,1,1]:$w['factions'][$owner]['levels']);
+        $won=$effective>=$defense;
+        $loss=max(0.04,min(0.55,$defense/max(1,$effective)*0.23));
+        foreach ($g['units'] as &$n) $n=max(0,$n-(int)ceil($n*$loss));
+        unset($n);
+        if ($won) {
+            $g['victories']++; $g['coins']=min(1e12,$g['coins']+30); $w['owners'][$id]=$slot;
+            if ($id!==$g['home'] && !in_array($id,$g['conquests'],true)) {
+                $g['conquests'][]=$id;
+                if (count($g['conquests'])%10===0) { $g['nukes']++; $this->cue($w,$slot,'unlock'); }
+            }
+            $this->event($w,$slot,'Победа! '.$this->name($id).' под вашим контролем. Трофеи: 30 монет.');
+            if ($owner!=='') {
+                foreach ($defender as &$n) $n=max(0,$n-(int)ceil($n*0.35));
+                unset($n);
+                $w['factions'][$owner]['defeats']++;
+                $this->event($w,$owner,'Игрок захватил '.$this->name($id).'. Отступившие войска сохранились.');
+                $this->cue($w,$owner,'defeat',$id,'defeat');
+            }
+        } else {
+            $g['defeats']++;
+            foreach ($defender as &$n) $n=max(0,$n-(int)ceil($n*0.12));
+            unset($n);
+            $this->event($w,$slot,'Отступление из '.$this->name($id).'. Усильте армию перед новой атакой.');
+            if ($owner!=='') {
+                $w['factions'][$owner]['victories']++;
+                $this->event($w,$owner,'Атака на '.$this->name($id).' отбита.');
+                $this->cue($w,$owner,'victory',$id,'victory');
+            }
+        }
+        $this->cue($w,$slot,$won?($this->alive($w,$slot)?'victory':'campaign_win'):'defeat',$id,$won?'victory':'defeat');
+    }
+    public function tick(array &$w,array $bots): void {
+        $w['elapsed']++;
+        foreach (array_keys($w['factions']) as $slot) {
+            $g=&$w['factions'][$slot];
+            if (!$this->alive($w,$slot)) { $g['operations']=[]; $g['mission']=[]; continue; }
+            if (in_array($slot,$bots,true) && $w['elapsed']%4===0) {
+                $this->commandTime=$w['elapsed']-1;
+                try { $this->bot($w,$slot); } finally { $this->commandTime=null; }
+            }
+            foreach ($w['owners'] as $id=>$owner) if ($owner===$slot) $g['coins']=min(1e12,$g['coins']+array_sum($w['countries'][$id]['businesses']));
+            $operations=$g['operations']; $g['operations']=[];
+            foreach ($operations as $op) {
+                if ($op['arrival']>$w['elapsed']) $g['operations'][]=$op;
+                else {
+                    $this->resolve($w,$slot,$op);
+                    if (!$this->alive($w,$slot)) { $g['operations']=[]; $g['mission']=[]; break; }
+                }
+            }
+            if ($g['mission'] && $g['mission']['arrival']<=$w['elapsed']) {
+                $id=$g['mission']['target']; $g['reports'][(string)$id]=['units'=>$this->army($w,$id),'time'=>$w['elapsed']]; $g['mission']=[];
+                $this->event($w,$slot,'Разведка завершена: '.$this->name($id).'. Состав войск раскрыт.'); $this->cue($w,$slot,'report');
+            }
+            if (in_array($slot,$bots,true)) { $g['effects']=[]; $g['sounds']=[]; }
+        }
+        if ($w['elapsed']%30===0) foreach ($w['owners'] as $i=>$owner) if ($owner==='') $w['countries'][$i]['units'][0]=min(100000000,$w['countries'][$i]['units'][0]+1);
+    }
+    private function bot(array &$w,string $slot): void {
+        $g=&$w['factions'][$slot];
+        if ($g['units'][2]<4) $this->command($w,$slot,'recruit',[2]);
+        elseif ($g['coins']>=150 && $g['levels'][0]<6) $this->command($w,$slot,'upgrade',[0]);
+        else $this->command($w,$slot,'recruit',[intdiv($w['elapsed'],4)%3]);
+        if ($this->has($g,'attack')) return;
+        $target=-1; $weakest=INF;
+        foreach ($w['owners'] as $id=>$owner) {
+            if ($owner===$slot || !$this->attackable($w,$slot,$id)) continue;
+            $defense=$this->power($this->army($w,$id),$owner===''?[1,1,1]:$w['factions'][$owner]['levels']);
+            $strength=$this->power($g['units'],$g['levels'])*($this->border($w,$slot,$id)?1:0.85);
+            if ($defense<=$strength*0.9 && $defense<$weakest) { $target=$id; $weakest=$defense; }
+        }
+        if ($target>=0) {
+            if (!isset($g['reports'][(string)$target])) $this->command($w,$slot,'spy',[$target]);
+            $this->command($w,$slot,'attack',[$target]);
+        }
+    }
+    public function view(array $w,string $slot,array $players): array {
+        $g=$w['factions'][$slot]; $countries=$w['countries']; $colors=[]; $names=[]; $remote=[];
+        foreach ($w['owners'] as $id=>$owner) {
+            $countries[$id]['owned']=$owner===$slot;
+            $countries[$id]['units']=$owner===$slot?$g['units']:[0,0,0];
+            if ($owner!=='' && isset($players[$owner])) { $colors[(string)$id]=$players[$owner]['color']; $names[(string)$id]=$players[$owner]['name']; }
+        }
+        foreach ($w['factions'] as $other=>$faction) if ($other!==$slot) foreach ($faction['operations'] as $op) {
+            $op['kind']=$op['kind']==='nuke'?'nuke':'enemy'; $op['source_color']=$players[$other]['color']; $remote[]=$op;
+        }
+        $game=$g;
+        unset($game['sounds'],$game['effects']);
+        $game+=['version'=>3,'elapsed'=>$w['elapsed'],'countries'=>$countries,'warnings'=>[],'military_balance'=>$this->map['balance']];
+        $game['mission']=(object)$game['mission']; $game['reports']=(object)$game['reports'];
+        return ['game'=>$game,'colors'=>(object)$colors,'names'=>(object)$names,'remote'=>$remote,'sounds'=>$g['sounds'],'effects'=>$g['effects']];
+    }
+}

@@ -1,0 +1,34 @@
+All sounds: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+ATLAS edits: trimmed, mixed, normalized, faded, converted to mono Vorbis.
+
+interface: Kenney
+https://kenney.nl/assets/interface-sounds
+CC0-1.0
+
+rpg: Kenney
+https://kenney.nl/assets/rpg-audio
+CC0-1.0
+
+scifi: Kenney
+https://kenney.nl/assets/sci-fi-sounds
+CC0-1.0
+
+jingles: Kenney
+https://kenney.nl/assets/music-jingles
+CC0-1.0
+
+naval: Iwan Gabovitch / qubodup
+https://opengameart.org/content/tiny-naval-battle-sounds-set
+CC0-1.0
+
+explosion: EZduzziteh
+https://opengameart.org/content/explosions-4
+CC0-1.0
+
+alarm: yd
+https://opengameart.org/content/short-alarm
+CC0-1.0
+
+radio: bretbernhoft
+https://opengameart.org/content/frequency-static-sound-effects
+CC0-1.0

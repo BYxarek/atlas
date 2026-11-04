@@ -1,0 +1,17 @@
+**
+!project.godot
+!main.tscn
+!export_presets.cfg
+!src/
+!src/*.gd
+!assets/
+!assets/world.json
+!assets/military.json
+!assets/icon.svg
+!assets/i18n/
+!assets/i18n/*.json
+!assets/legal/
+!assets/legal/*
+!server/
+!server/Dockerfile
+!server/entrypoint.py

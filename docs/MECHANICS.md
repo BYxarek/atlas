@@ -1,0 +1,37 @@
+# Game mechanics
+
+[Documentation](README.md) · [Русский](MECHANICS.ru.md)
+
+## Starting and winning
+
+Choose any of the 176 territories and a color. Every player starts with 180 coins, 35 infantry, 8 aircraft and 4 ships, regardless of the chosen country. Conquer the entire map to win. Your army and technologies are shared across your territories. Neutral armies use the included game balance data, not real troop counts.
+
+## Economy and army
+
+Each country has 1–5 businesses. A business earns its level in coins per game second; upgrading costs `25 × current level` and adds one coin per second. Income stacks across controlled countries. Solo pause and a closed game generate no income.
+
+| Troop type | Recruitment | Base strength per unit |
+| --- | --- | --- |
+| Infantry | 10 for 12 coins | 1 |
+| Aircraft | 3 for 28 coins | 3 |
+| Ships | 2 for 36 coins | 4 |
+
+Technology starts at level 1. Each additional level adds 25% of base strength to that troop type; research costs `65 × current level`. Effective strength is the sum of `unit count × base strength × (1 + 0.25 × (technology level − 1))`.
+
+## Reconnaissance and attacks
+
+A spy costs 20 coins and returns after 6 game seconds. Only one spy mission runs at a time. Reports show a snapshot, not a live enemy army. Scout again after an opponent has had time to recruit.
+
+An attack on a neighbor of any owned country costs 25 coins. Other targets cost 55 coins, require at least four ships and apply a 15% strength penalty. One outgoing offensive operation can run at a time. Troops travel for 4 game seconds; battle uses armies and technologies at arrival. The attacker wins on equal or greater effective strength. Both sides take losses; victory transfers the territory and businesses and awards 30 coins.
+
+## Solo defense and nuclear weapons
+
+The final remaining country is protected against solo invasions. After expansion, rumors warn of a possible invasion 60–300 game seconds ahead. A rumor becomes an attack with 60% probability; confirmed troops travel for 5 seconds. Without reconnaissance the attacker name and exact army are hidden. Neutral countries receive one infantry every 30 seconds. Capturing an invader's country cancels its pending invasion.
+
+Every ten first-time conquests grant one nuclear charge. The starting country and recaptures do not count. A missile travels for 3 seconds, halves every defending troop count (rounded down) and does not capture land. If the target becomes yours before impact, the strike is canceled and its charge returned.
+
+## Multiplayer differences and saves
+
+Rooms contain up to eight humans/bots, each with separate money, army, technology and intelligence. PvP can eliminate a player's last territory. The personal menu does not pause an online match; return everyone to the lobby for a shared pause. Backends and identity handling are explained in [Multiplayer](MULTIPLAYER.md).
+
+Autosaves run every 15 game seconds and on important actions; manual snapshots remain separate. See [Playing](PLAYING.md) for controls, backup recovery and storage paths. Simulated sea access and combat are intentionally simplified; there is no tactical battlefield, diplomacy or offline income.
