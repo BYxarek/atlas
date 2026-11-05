@@ -12,6 +12,8 @@ import urllib.error
 import sys
 from fetch_php import php_binary
 
+sys.stdout.reconfigure(encoding='utf-8')
+
 root=Path(__file__).resolve().parent.parent
 php=php_binary()
 godot=root/'tools/godot-4.8-beta2/Godot_v4.8-beta2_win64.exe'
