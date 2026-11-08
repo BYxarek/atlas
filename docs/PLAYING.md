@@ -4,9 +4,11 @@
 
 ## Start a campaign
 
-Download a client from GitHub Releases. On Windows extract the whole ZIP and run `Atlas.exe`. On Android install the APK and allow installation from that source when requested. Select New game, choose a country and color, then start. Internet access is only needed for network play.
+Download a client from GitHub Releases. On Windows extract the whole ZIP and run `Atlas.exe`. On Android install the APK and allow installation from that source when requested. Select New game on the left, choose a country and color, then start. Solo campaigns work offline.
 
-Use Settings to change language, audio and, on Windows, the borderless fullscreen option.
+The right side of the main menu shows the map, the installed version and a link to the project on GitHub. At startup the game checks GitHub for a newer stable release. When one is available, the game shows the release notes and adds a release link to the main menu.
+
+In Settings, use the left navigation to switch between Interface (language and FPS), Display (map and Windows fullscreen options) and Audio (master and effects volume).
 
 ## Controls
 

@@ -9,6 +9,9 @@ const Sound = preload("res://src/sound.gd")
 const NetworkSession = preload("res://src/network_session.gd")
 const OnlineMenu = preload("res://src/online_menu.gd")
 const ModMenu = preload("res://src/mod_menu.gd")
+const REPOSITORY = "https://github.com/BYxarek/atlas"
+const LATEST_RELEASE = REPOSITORY + "/releases/latest"
+const RELEASE_API = "https://api.github.com/repos/BYxarek/atlas/releases/latest"
 var mod_menu = ModMenu.new()
 var mod_tools = preload("res://src/mod_tools.gd").new()
 const Media = preload("res://src/mod_media.gd")
@@ -54,6 +57,7 @@ var save_timer = 0
 var ended_shown = false
 var settings_path = "user://settings.cfg"
 var settings_origin = "menu"
+var settings_section = 0
 var fullscreen_toggle: CheckButton
 var windowed_mode = Window.MODE_WINDOWED
 var windowed_rect = Rect2i()
@@ -74,6 +78,10 @@ var mobile_modal: Control
 var show_fps = false
 var fps_panel: PanelContainer
 var fps_label: Label
+var game_version: String = ProjectSettings.get_setting("application/config/version")
+var release: Dictionary = {}
+var release_button: Button
+var release_notice_pending = false
 
 func _ready() -> void:
 	if OS.has_feature("dedicated_server") or "--server" in OS.get_cmdline_user_args():
@@ -146,6 +154,7 @@ func _ready() -> void:
 		show_main_menu()
 		if not reason.is_empty(): message(L.text("Сетевая игра"), reason))
 	if FileAccess.file_exists("user://mods_starting"): DirAccess.remove_absolute("user://mods_starting")
+	if DisplayServer.get_name() != "headless": check_latest_release()
 
 func style(bg: Color, border_color: Color = Color.TRANSPARENT, radius: int = 12) -> StyleBoxFlat:
 	var box = StyleBoxFlat.new()
@@ -199,6 +208,10 @@ func build_theme() -> void:
 		if state == "disabled": bg = Color("1a2c43")
 		if state == "focus": bg = Color.TRANSPARENT
 		t.set_stylebox(state, "Button", style(bg, MINT if state == "focus" else Color("43769c"), 8))
+	var toggle_style = StyleBoxEmpty.new()
+	toggle_style.set_content_margin_all(8)
+	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		t.set_stylebox(state, "CheckButton", toggle_style)
 	for control in ["LineEdit", "ItemList", "OptionButton"]:
 		t.set_color("font_color", control, INK)
 		t.set_stylebox("normal" if control != "ItemList" else "panel", control, style(Color("142c49"), Color("3a6084"), 8))
@@ -370,68 +383,80 @@ func build_card() -> void:
 	card.hide()
 	if mobile: card_body.add_theme_constant_override("separation", 14)
 
-func menu_frame(title: String, subtitle: String, width: int = 500, height: int = 560) -> void:
-	var changed_page = not overlay.visible or not is_instance_valid(menu_body) or menu_body.get_child(0).text != title
+func menu_frame(title: String, subtitle: String, width: int = 500, height: int = 560, sidebar: bool = false) -> VBoxContainer:
+	var changed_page = not overlay.visible or not is_instance_valid(menu_shell) or menu_shell.get_meta("title") != title
+	var main_menu = sidebar and page == "menu"
 	clear_box(overlay)
 	overlay.show()
 	hud.hide()
 	card.hide()
 	var dim = ColorRect.new()
-	dim.color = Color(0.035, 0.08, 0.16, 0.65)
+	dim.color = Color(0.035, 0.08, 0.16, 0.16 if main_menu else 0.65)
 	overlay.add_child(dim)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var shell = PanelContainer.new()
 	menu_shell = shell
-	shell.add_theme_stylebox_override("panel", style(Color("172f4ff5"), Color("497b9c"), 18))
+	shell.set_meta("title", title)
+	shell.set_meta("frame_size", Vector2(width, height))
+	shell.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if mobile or main_menu else style(Color("172f4ff5"), Color("497b9c"), 18))
 	overlay.add_child(shell)
-	shell.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	shell.offset_left = -width / 2.0
-	shell.offset_right = width / 2.0
-	shell.offset_top = -height / 2.0
-	shell.offset_bottom = height / 2.0
-	if mobile:
-		shell.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-		shell.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		shell.offset_left = insets.x
-		shell.offset_top = insets.y
-		shell.offset_right = -insets.z
-		shell.offset_bottom = -insets.w
+	shell.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT if mobile else Control.PRESET_CENTER)
+	fit_menu_shell()
 	var margin = MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 16)
 	margin.add_theme_constant_override("margin_right", 16)
 	margin.add_theme_constant_override("margin_top", 12)
 	margin.add_theme_constant_override("margin_bottom", 12)
 	shell.add_child(margin)
-	menu_body = VBoxContainer.new()
-	menu_body.add_theme_constant_override("separation", 14)
+	var content: VBoxContainer
+	if sidebar:
+		var columns = HBoxContainer.new()
+		columns.add_theme_constant_override("separation", 12 if mobile else 24)
+		margin.add_child(columns)
+		var navigation = PanelContainer.new()
+		var background = style(Color("10243def"), Color("497b9c"), 12)
+		background.set_content_margin_all(8 if mobile else 16)
+		navigation.add_theme_stylebox_override("panel", background)
+		navigation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		navigation.size_flags_stretch_ratio = 0.65 if main_menu else 0.5
+		columns.add_child(navigation)
+		menu_body = menu_scroll(navigation)
+		content = menu_scroll(columns)
+	else:
+		menu_body = menu_scroll(margin)
+	if not main_menu: menu_body.add_child(paragraph(title, MINT, 18 if sidebar else (26 if mobile else 32)))
+	if not subtitle.is_empty(): menu_body.add_child(paragraph(subtitle))
 	if mobile:
-		var scroll = ScrollContainer.new()
-		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		scroll.follow_focus = true
-		margin.add_child(scroll)
-		scroll.add_child(menu_body)
-		menu_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	else: margin.add_child(menu_body)
-	var title_label = label(title, 26 if mobile else 32, MINT)
-	if mobile:
-		title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	menu_body.add_child(title_label)
-	menu_body.add_child(paragraph(subtitle))
-	if mobile:
-		call_deferred("adapt_inputs", menu_body)
+		adapt_inputs.call_deferred(menu_body)
 		if changed_page: animate_page(shell)
+	return content
 
-func menu_scroll() -> void:
+func fit_menu_shell() -> void:
+	if not is_instance_valid(menu_shell) or not overlay.visible: return
+	if mobile:
+		menu_shell.offset_left = insets.x
+		menu_shell.offset_top = insets.y
+		menu_shell.offset_right = -insets.z
+		menu_shell.offset_bottom = -insets.w
+	else:
+		var half_size: Vector2 = menu_shell.get_meta("frame_size").min(size - Vector2(32, 32)) / 2
+		menu_shell.offset_left = -half_size.x
+		menu_shell.offset_right = half_size.x
+		menu_shell.offset_top = -half_size.y
+		menu_shell.offset_bottom = half_size.y
+
+func menu_scroll(parent: Container) -> VBoxContainer:
 	var scroll = ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true
-	menu_body.add_child(scroll)
-	menu_body = VBoxContainer.new()
-	menu_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	menu_body.add_theme_constant_override("separation", 14)
-	scroll.add_child(menu_body)
+	parent.add_child(scroll)
+	var body = VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 10 if mobile else 14)
+	scroll.add_child(body)
+	return body
 
 func animate_page(target: Control) -> void:
 	if not mobile: return
@@ -448,10 +473,22 @@ func animate_page(target: Control) -> void:
 func show_main_menu() -> void:
 	game.paused = true
 	page = "menu"
-	menu_frame("◈  A T L A S", L.text("МИРОВОЕ ГОСПОДСТВО\nОдин мир. Ваша история."), 500, 620)
-	var space = Control.new()
-	space.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	menu_body.add_child(space)
+	var preview = menu_frame("ATLAS", "", 1100, 680, true)
+	var heading = box_panel(preview)
+	var heading_style = style(Color("10243def"), Color("497b9c"))
+	heading_style.set_content_margin_all(8 if mobile else 16)
+	heading.get_parent().add_theme_stylebox_override("panel", heading_style)
+	var project = button(L.text("ATLAS — Мировое господство") + " ↗", func(): OS.shell_open(REPOSITORY))
+	project.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	project.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	project.add_theme_font_size_override("font_size", 20 if mobile else 30)
+	project.add_theme_color_override("font_color", MINT)
+	project.tooltip_text = REPOSITORY
+	heading.add_child(project)
+	heading.add_child(paragraph(L.text("Версия игры · %s") % game_version))
+	release_button = button("", func(): OS.shell_open(LATEST_RELEASE), true)
+	release_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	heading.add_child(release_button)
 	saves_list = store.list_saves()
 	var latest = saves_list.filter(func(entry): return entry.valid and not entry.defeated)
 	var resume = button(L.text("Продолжить"), func():
@@ -471,68 +508,128 @@ func show_main_menu() -> void:
 	menu_body.add_child(button(L.text("Моды"), mod_menu.show_menu))
 	if Engine.has_meta("atlas_mod_error"):
 		menu_body.add_child(paragraph(str(Engine.get_meta("atlas_mod_error")), RED, 12))
+	var space = Control.new()
+	space.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	menu_body.add_child(space)
 	menu_body.add_child(button(L.text("Выйти"), request_exit))
-	menu_body.add_child(paragraph(L.text("Нативная 2D-стратегия · %s · v0.3.0") % ("Android" if mobile else "Windows"), MUTED, 11))
-	if mobile:
-		for action in menu_body.get_children():
-			if action is Button:
+	for action in menu_body.get_children():
+		if action is Button:
+			action.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			if mobile:
 				action.flat = true
-				action.alignment = HORIZONTAL_ALIGNMENT_LEFT
 				action.add_theme_color_override("font_color", MINT if action == resume else INK)
+	show_release_update()
 
-func show_settings(origin: String = "menu") -> void:
+func check_latest_release() -> void:
+	var request = HTTPRequest.new()
+	request.timeout = 8
+	request.body_size_limit = 512 * 1024
+	add_child(request)
+	request.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray):
+		request.queue_free()
+		if result == HTTPRequest.RESULT_SUCCESS and code == 200:
+			var response = JSON.new()
+			if response.parse(body.get_string_from_utf8()) == OK:
+				read_latest_release(response.data))
+	if request.request(RELEASE_API, ["Accept: application/vnd.github+json", "User-Agent: ATLAS/" + game_version]) != OK:
+		request.queue_free()
+
+func release_version(tag: String) -> Vector3i:
+	var parts = tag.trim_prefix("v").split(".")
+	if parts.size() != 3: return Vector3i(-1, -1, -1)
+	for part in parts:
+		if part.length() > 9 or not part.is_valid_int() or not "0123456789".contains(part[0]):
+			return Vector3i(-1, -1, -1)
+	return Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
+
+func read_latest_release(data: Variant) -> void:
+	if not data is Dictionary or data.get("draft", true) != false or data.get("prerelease", true) != false: return
+	var installed = release_version(game_version)
+	var tag = data.get("tag_name")
+	if not tag is String or installed.x < 0 or release_version(tag) <= installed: return
+	var notes = data.get("body")
+	release = {"tag": tag, "notes": notes if notes is String else ""}
+	release_notice_pending = true
+	show_release_update()
+
+func show_release_update() -> void:
+	if page != "menu" or not is_instance_valid(release_button): return
+	release_button.visible = not release.is_empty()
+	if release.is_empty(): return
+	release_button.text = L.text("Доступно обновление · %s") % release.tag
+	if not release_notice_pending or is_instance_valid(mobile_modal): return
+	release_notice_pending = false
+	var notes: String = release.notes.strip_edges()
+	show_mobile_dialog(release_button.text, notes if not notes.is_empty() else L.text("Описание релиза доступно на GitHub."),
+		func(): OS.shell_open(LATEST_RELEASE), false, L.text("Открыть релиз на GitHub"))
+
+func show_settings(origin: String = "menu", section: int = 0) -> void:
 	settings_origin = origin
 	page = "settings"
 	game.paused = true
-	menu_frame(L.text("Настройки"), L.text("Экран и звук"), 580, 600)
-	menu_body.add_child(label(L.text("Язык / Language"), 16))
-	var language_picker = OptionButton.new()
-	language_picker.custom_minimum_size.y = 56 if mobile else 44
-	language_picker.add_item("Русский")
-	language_picker.add_item("English")
-	language_picker.select(0 if L.language == "ru" else 1)
-	language_picker.item_selected.connect(func(index): change_language("ru" if index == 0 else "en"))
-	menu_body.add_child(language_picker)
-	fullscreen_toggle = CheckButton.new()
-	fullscreen_toggle.text = L.text("Полноэкранный режим без рамок")
-	fullscreen_toggle.custom_minimum_size.y = 52
-	fullscreen_toggle.button_pressed = get_window().mode == Window.MODE_FULLSCREEN
-	fullscreen_toggle.toggled.connect(set_fullscreen)
-	menu_body.add_child(fullscreen_toggle)
-	if not mobile:
-		menu_body.add_child(paragraph(L.text("Игра занимает весь монитор без заголовка, рамок и панели задач. При выключении восстанавливается предыдущий оконный режим.")))
-		menu_body.add_child(paragraph(L.text("Изменения применяются сразу и сохраняются между запусками. Карта заполняет окно при любом соотношении сторон.")))
-	if mobile:
-		fullscreen_toggle.hide()
-		menu_body.add_child(paragraph(L.text("Касание выбирает страну. Перетаскивание двигает карту, два пальца меняют масштаб. Назад закрывает панель или открывает меню.")))
-	var map_toggle = CheckButton.new()
-	map_toggle.name = "MapViewToggle"
-	map_toggle.text = L.text("Объёмная карта (2.5D)")
-	map_toggle.custom_minimum_size.y = 52
-	map_toggle.button_pressed = world.tilted
-	map_toggle.toggled.connect(set_map_view)
-	menu_body.add_child(map_toggle)
-	var fps_toggle = CheckButton.new()
-	fps_toggle.name = "FpsToggle"
-	fps_toggle.text = L.text("Показывать FPS")
-	fps_toggle.custom_minimum_size.y = 52
-	fps_toggle.button_pressed = show_fps
-	fps_toggle.toggled.connect(set_fps_counter)
-	menu_body.add_child(fps_toggle)
-	if not mobile:
-		var quality_toggle = CheckButton.new()
-		quality_toggle.name = "MapQualityToggle"
-		quality_toggle.text = L.text("Высокое качество 2.5D")
-		quality_toggle.custom_minimum_size.y = 52
-		quality_toggle.button_pressed = world.detailed_map
-		quality_toggle.toggled.connect(set_map_quality)
-		menu_body.add_child(quality_toggle)
-	master_slider = volume_control(L.text("Общая громкость"), sound.master_volume)
-	effects_slider = volume_control(L.text("Громкость эффектов"), sound.effects_volume)
-	master_slider.value_changed.connect(func(value): sound.set_mix(value / 100.0, sound.effects_volume); save_audio_settings())
-	effects_slider.value_changed.connect(func(value): sound.set_mix(sound.master_volume, value / 100.0); save_audio_settings())
-	menu_body.add_child(paragraph(L.text("Общая громкость управляет всеми звуками. Громкость эффектов — интерфейсом и игровыми событиями; музыкальные сигналы результата регулируются общей громкостью."), MUTED, 12))
+	var content = menu_frame(L.text("Настройки"), "", 870, 650, true)
+	var sections = [L.text("Интерфейс"), L.text("Экран"), L.text("Звук")]
+	var group = ButtonGroup.new()
+	for index in sections.size():
+		var tab = button(sections[index], show_settings_section.bind(index, sections[index]))
+		tab.name = "SettingsSection%d" % index
+		tab.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		tab.toggle_mode = true
+		tab.button_group = group
+		tab.button_pressed = index == section
+		menu_body.add_child(tab)
 	menu_body.add_child(button(L.text("Назад"), close_settings))
+	menu_body = content
+	show_settings_section(section, sections[section])
+
+func show_settings_section(section: int, title: String) -> void:
+	settings_section = section
+	clear_box(menu_body)
+	menu_body.get_parent().scroll_vertical = 0
+	menu_body.add_child(paragraph(title, MINT, 24 if mobile else 30))
+	match section:
+		0:
+			menu_body.add_child(label(L.text("Язык / Language"), 16))
+			var language_picker = OptionButton.new()
+			language_picker.custom_minimum_size.y = 56 if mobile else 44
+			language_picker.add_item("Русский")
+			language_picker.add_item("English")
+			language_picker.select(0 if L.language == "ru" else 1)
+			language_picker.item_selected.connect(func(index): change_language("ru" if index == 0 else "en"))
+			menu_body.add_child(language_picker)
+			menu_body.add_child(settings_toggle("FpsToggle", L.text("Показывать FPS"), show_fps, set_fps_counter))
+		1:
+			show_display_settings()
+		2:
+			master_slider = volume_control(L.text("Общая громкость"), sound.master_volume)
+			effects_slider = volume_control(L.text("Громкость эффектов"), sound.effects_volume)
+			master_slider.value_changed.connect(func(value): sound.set_mix(value / 100.0, sound.effects_volume); save_audio_settings())
+			effects_slider.value_changed.connect(func(value): sound.set_mix(sound.master_volume, value / 100.0); save_audio_settings())
+			menu_body.add_child(paragraph(L.text("Общая громкость управляет всеми звуками. Громкость эффектов — интерфейсом и игровыми событиями; музыкальные сигналы результата регулируются общей громкостью."), MUTED, 12))
+	if mobile: adapt_inputs(menu_body)
+
+func show_display_settings() -> void:
+	if mobile:
+		menu_body.add_child(paragraph(L.text("Касание выбирает страну. Перетаскивание двигает карту, два пальца меняют масштаб. Назад закрывает панель или открывает меню.")))
+	else:
+		fullscreen_toggle = settings_toggle("FullscreenToggle", L.text("Полноэкранный режим без рамок"),
+			get_window().mode == Window.MODE_FULLSCREEN, set_fullscreen)
+		menu_body.add_child(fullscreen_toggle)
+		menu_body.add_child(paragraph(L.text("Игра занимает весь монитор без заголовка, рамок и панели задач. При выключении восстанавливается предыдущий оконный режим.")))
+	menu_body.add_child(settings_toggle("MapViewToggle", L.text("Объёмная карта (2.5D)"), world.tilted, set_map_view))
+	if not mobile:
+		menu_body.add_child(settings_toggle("MapQualityToggle", L.text("Высокое качество 2.5D"), world.detailed_map, set_map_quality))
+		menu_body.add_child(paragraph(L.text("Изменения применяются сразу и сохраняются между запусками. Карта заполняет окно при любом соотношении сторон.")))
+
+func settings_toggle(id: String, caption: String, enabled: bool, apply: Callable) -> CheckButton:
+	var toggle = CheckButton.new()
+	toggle.name = id
+	toggle.text = caption
+	toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toggle.custom_minimum_size.y = 56 if mobile else 52
+	toggle.button_pressed = enabled
+	toggle.toggled.connect(apply)
+	return toggle
 
 func volume_control(caption: String, value: float) -> HSlider:
 	var row = HBoxContainer.new()
@@ -581,11 +678,14 @@ func change_language(language: String) -> void:
 	build_hud()
 	move_child(hud, world.get_index() + 1)
 	responsive_layout()
-	show_settings(settings_origin)
+	show_settings(settings_origin, settings_section)
 	world.refresh_map()
 
 func responsive_layout() -> void:
-	if not mobile or not is_instance_valid(hud): return
+	if not mobile:
+		fit_menu_shell()
+		return
+	if not is_instance_valid(hud): return
 	insets = Vector4.ZERO
 	if OS.has_feature("android"):
 		var safe = DisplayServer.get_display_safe_area()
@@ -628,11 +728,7 @@ func responsive_layout() -> void:
 	fps_panel.offset_right = -insets.z - 10
 	fps_panel.offset_bottom = -insets.w - 90
 	apply_card_layout()
-	if is_instance_valid(menu_shell) and overlay.visible:
-		menu_shell.offset_left = insets.x
-		menu_shell.offset_top = insets.y
-		menu_shell.offset_right = -insets.z
-		menu_shell.offset_bottom = -insets.w
+	fit_menu_shell()
 
 func apply_card_layout() -> void:
 	if not mobile: return
@@ -1186,7 +1282,7 @@ func message(title: String, text: String) -> void:
 	dialog.canceled.connect(dialog.queue_free)
 	dialog.popup_centered()
 
-func show_mobile_dialog(title: String, text: String, action: Callable, confirmation: bool) -> void:
+func show_mobile_dialog(title: String, text: String, action: Callable, confirmation: bool, action_caption: String = "") -> void:
 	if is_instance_valid(mobile_modal): mobile_modal.queue_free()
 	var layer = ColorRect.new()
 	layer.color = Color(0, 0, 0, 0.75)
@@ -1200,19 +1296,39 @@ func show_mobile_dialog(title: String, text: String, action: Callable, confirmat
 	panel.custom_minimum_size.x = minf(480, size.x - 32)
 	panel.add_theme_stylebox_override("panel", style(Color("172f4f"), MINT, 12))
 	center.add_child(panel)
+	var layout = VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 12)
+	panel.add_child(layout)
+	var release_actions = not action_caption.is_empty()
 	var scroll = ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(minf(448, size.x - 64), minf(340, size.y - 96))
+	var vertical_margin = 140 if release_actions else 96
+	scroll.custom_minimum_size = Vector2(minf(448, size.x - 64), minf(340, size.y - vertical_margin))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	panel.add_child(scroll)
+	layout.add_child(scroll)
 	center.resized.connect(func():
 		panel.custom_minimum_size.x = minf(480, size.x - 32)
-		scroll.custom_minimum_size = Vector2(minf(448, size.x - 64), minf(340, size.y - 96)))
+		scroll.custom_minimum_size = Vector2(minf(448, size.x - 64), minf(340, size.y - vertical_margin)))
 	var body = VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 12)
 	scroll.add_child(body)
 	body.add_child(paragraph(title, GOLD, 18))
 	body.add_child(paragraph(text, INK, 14))
+	if release_actions:
+		var footer = HBoxContainer.new()
+		layout.add_child(footer)
+		var close = button(L.text("Закрыть"), layer.queue_free)
+		footer.add_child(close)
+		var open_release = button(action_caption, func(): layer.queue_free(); action.call(), true)
+		open_release.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		open_release.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		footer.add_child(open_release)
+		close.focus_next = close.get_path_to(open_release)
+		close.focus_previous = close.focus_next
+		open_release.focus_next = open_release.get_path_to(close)
+		open_release.focus_previous = open_release.focus_next
+		close.grab_focus()
+		return
 	body.add_child(button(L.text("Подтвердить") if confirmation else "OK", func():
 		layer.queue_free()
 		sound.play("confirm")
@@ -1400,6 +1516,10 @@ func format_number(value: int) -> String:
 
 func _input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo: return
+	if event.keycode == KEY_ESCAPE and is_instance_valid(mobile_modal):
+		mobile_back()
+		get_viewport().set_input_as_handled()
+		return
 	if event.keycode == KEY_ESCAPE or (event.keycode == KEY_SPACE and page in ["game", "pause"] and not get_viewport().gui_get_focus_owner() is LineEdit):
 		sound.play("open" if page == "game" else "cancel")
 		match page:

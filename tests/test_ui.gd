@@ -66,12 +66,43 @@ func run() -> void:
 		check(audible, "Native theme button produces audio on the interface bus")
 		AudioServer.remove_bus_effect(ui_bus, AudioServer.get_bus_effect_count(ui_bus) - 1)
 	native_button.queue_free()
+	check(not scene.release_button.visible, "Release shortcut is hidden at startup")
+	var current_version: String = scene.game_version
+	scene.game_version = "0.3.0"
+	for tag in ["v0.2.99", "v0.3.0", "v9.0.0-rc1", "not a version"]:
+		scene.read_latest_release({"tag_name": tag, "draft": false, "prerelease": false})
+		check(not scene.release_button.visible, "Current, older and invalid versions do not show a shortcut")
+	scene.read_latest_release({"tag_name": "v0.10.0", "draft": false, "prerelease": false, "body": "Release notes\n".repeat(100)})
+	check(scene.release_button.visible and scene.release_button.text.ends_with("v0.10.0"), "Newer numeric version adds the release shortcut")
+	check(is_instance_valid(scene.mobile_modal) and not scene.release_notice_pending, "Newer release shows the startup notice")
+	await process_frame
+	await process_frame
+	var notes_scroll: ScrollContainer = scene.mobile_modal.find_children("*", "ScrollContainer", true, false)[0]
+	check(notes_scroll.get_v_scroll_bar().visible, "Long release notes scroll independently of the action buttons")
+	scene.mobile_back()
+	await process_frame
+	scene.show_main_menu()
+	check(scene.release_button.visible and not is_instance_valid(scene.mobile_modal), "Returning to the menu retains the shortcut without repeating the notice")
+	scene.release.clear()
+	scene.game_version = current_version
+	scene.mod_tools.show_tools()
+	await process_frame
+	await process_frame
+	var tools_scroll: ScrollContainer = scene.menu_body.get_parent()
+	var back: Button = scene.menu_body.get_child(-1)
+	check(tools_scroll.get_v_scroll_bar().visible, "Long desktop mod tools page has a scrollbar")
+	tools_scroll.ensure_control_visible(back)
+	await process_frame
+	check(tools_scroll.get_global_rect().encloses(back.get_global_rect()), "Scrolling reaches the last mod tools button")
 	scene.show_settings("menu")
 	check(scene.page == "settings" and scene.game.paused, "Settings are available from the main menu")
+	scene.overlay.find_child("SettingsSection2", true, false).press()
+	check(scene.overlay.find_child("SettingsSection2", true, false).button_pressed, "Audio navigation is selected when its page is open")
 	scene.master_slider.value = 65
 	scene.effects_slider.value = 40
 	check(is_equal_approx(scene.sound.master_volume, 0.65) and is_equal_approx(scene.sound.effects_volume, 0.4), "Volume sliders immediately update mix")
 	await capture("settings-preview")
+	scene.overlay.find_child("SettingsSection1", true, false).press()
 	scene.fullscreen_toggle.set_pressed(true)
 	await process_frame
 	await process_frame
@@ -79,6 +110,7 @@ func run() -> void:
 	check(config.load(scene.settings_path) == OK and config.get_value("display", "borderless_fullscreen") == true, "Fullscreen choice persists")
 	check(is_equal_approx(config.get_value("audio", "master"), 0.65) and is_equal_approx(config.get_value("audio", "effects"), 0.4), "Changing fullscreen preserves volume preferences")
 	var map_toggle: CheckButton = scene.menu_body.get_node("MapViewToggle")
+	check(map_toggle.get_theme_stylebox("normal") == map_toggle.get_theme_stylebox("hover"), "Toggle rows keep their background on hover")
 	map_toggle.set_pressed(true)
 	check(scene.world.tilted and config.load(scene.settings_path) == OK and config.get_value("display", "tilted_map", false), "2.5D activates and saves from Settings")
 	scene.world.set_tilted(false)
@@ -89,16 +121,6 @@ func run() -> void:
 	check(scene.world.relief.sunlight.shadow_enabled and config.load(scene.settings_path) == OK and config.get_value("display", "detailed_map", false), "High 2.5D quality activates shadows and persists")
 	quality_toggle.set_pressed(false)
 	map_toggle.set_pressed(false)
-	var fps_toggle: CheckButton = scene.menu_body.get_node("FpsToggle")
-	fps_toggle.set_pressed(true)
-	check(scene.fps_panel.visible and scene.fps_label.text.begins_with("FPS "), "FPS counter appears when enabled")
-	check(config.load(scene.settings_path) == OK and config.get_value("display", "show_fps", false), "FPS preference persists")
-	scene.show_fps = false
-	scene.restore_display_settings()
-	await process_frame
-	check(scene.show_fps and scene.fps_panel.visible and scene.get_rect().encloses(scene.fps_panel.get_rect()), "FPS preference restores with the counter within the window")
-	fps_toggle.set_pressed(false)
-	check(not scene.fps_panel.visible, "FPS counter can be hidden")
 	if DisplayServer.get_name() != "headless":
 		check(root.mode == Window.MODE_FULLSCREEN, "Toggle enables native borderless fullscreen")
 		check(root.size == DisplayServer.screen_get_size(root.current_screen), "Fullscreen covers the monitor")
@@ -112,6 +134,17 @@ func run() -> void:
 	await process_frame
 	check(config.load(scene.settings_path) == OK and config.get_value("display", "borderless_fullscreen") == false, "Windowed choice persists")
 	if DisplayServer.get_name() != "headless": check(root.mode == Window.MODE_WINDOWED, "Toggle restores decorated window")
+	scene.overlay.find_child("SettingsSection0", true, false).press()
+	var fps_toggle: CheckButton = scene.menu_body.get_node("FpsToggle")
+	fps_toggle.set_pressed(true)
+	check(scene.fps_panel.visible and scene.fps_label.text.begins_with("FPS "), "FPS counter appears when enabled")
+	check(config.load(scene.settings_path) == OK and config.get_value("display", "show_fps", false), "FPS preference persists")
+	scene.show_fps = false
+	scene.restore_display_settings()
+	await process_frame
+	check(scene.show_fps and scene.fps_panel.visible and scene.get_rect().encloses(scene.fps_panel.get_rect()), "FPS preference restores with the counter within the window")
+	fps_toggle.set_pressed(false)
+	check(not scene.fps_panel.visible, "FPS counter can be hidden")
 	if DisplayServer.get_name() != "headless":
 		root.mode = Window.MODE_MAXIMIZED
 		await process_frame

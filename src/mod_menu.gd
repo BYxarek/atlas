@@ -11,7 +11,6 @@ func show_menu() -> void:
 	ui.page = "mods"
 	ui.game.paused = true
 	ui.menu_frame(L.text("Моды"), L.text("Изменения применятся после перезапуска игры."), 780, 790)
-	ui.menu_scroll()
 	ui.menu_body.add_child(ui.paragraph(L.text("Одиночные моды могут выполнять код. Сетевые моды используют общие правила для LAN, VPS и PHP.")))
 	ui.menu_body.add_child(ui.paragraph(ProjectSettings.globalize_path(manager.directory), ui.MUTED, 12))
 	if Engine.has_meta("atlas_mod_error"):

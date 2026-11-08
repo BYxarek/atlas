@@ -8,7 +8,6 @@ func show_tools() -> void:
 	ui.page = "mod_tools"
 	ui.game.paused = true
 	ui.menu_frame(L.text("Инструменты модов"), L.text("Итоговые правила, конфликты, проверка пакетов и тест сценария."), 850, 790)
-	ui.menu_scroll()
 	ui.menu_body.add_child(ui.button(L.text("Открыть редактор модов"), func(): OS.shell_open("https://byxarek.github.io/atlas/mod-studio.ru.html" if L.language == "ru" else "https://byxarek.github.io/atlas/mod-studio.html")))
 	ui.menu_body.add_child(ui.button(L.text("Проверить пакет…"), inspect_file.bind(false)))
 	ui.menu_body.add_child(ui.button(L.text("Проверить сохранение…"), inspect_file.bind(true)))

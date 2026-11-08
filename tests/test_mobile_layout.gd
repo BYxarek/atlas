@@ -18,7 +18,7 @@ func check_page(name: String) -> void:
 	for control in scene.overlay.find_children("*", "Control", true, false):
 		if not control.is_visible_in_tree(): continue
 		var rect = control.get_global_rect()
-		if control is ScrollContainer and control != scene.menu_body.get_parent():
+		if control is ScrollContainer and control.get_parent() is VBoxContainer:
 			check(control.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "Nested mobile lists use the page scroll")
 		check(rect.position.x >= -1 and rect.end.x <= scene.size.x + 1,
 			"%s / %s / %s exceeds width %d: %s" % [name, control.get_class(), control.get("text"), scene.size.x, rect])
@@ -55,10 +55,33 @@ func run() -> void:
 			check(scene.menu_shell.get_theme_stylebox("panel") is StyleBoxEmpty, "Mobile menu has no enclosing card")
 			for action in scene.menu_body.get_children():
 				if action is Button: check(action.flat, "Main actions use a flat list")
+			if dimensions.x > dimensions.y:
+				var actions: ScrollContainer = scene.menu_body.get_parent()
+				var exit_button: Button = scene.menu_body.get_child(-1)
+				check(actions.get_v_scroll_bar().visible, "Short landscape menu has an action scrollbar")
+				actions.ensure_control_visible(exit_button)
+				await process_frame
+				var viewport = actions.get_global_rect()
+				var last = exit_button.get_global_rect()
+				check(viewport.grow(1).encloses(last), "Scrolling reaches the exit button: %s in %s" % [last, viewport])
+			scene.release = {"tag": "v10.0.0", "notes": "Release notes\n".repeat(100)}
+			scene.release_notice_pending = true
+			scene.show_release_update()
+			for i in 4: await process_frame
+			var update_actions = scene.mobile_modal.find_children("*", "Button", true, false)
+			check(update_actions.size() == 2 and update_actions.all(func(action): return scene.get_global_rect().encloses(action.get_global_rect())),
+				"Update actions remain visible when the notes overflow")
+			scene.mobile_back()
+			await process_frame
+			scene.release.clear()
 			scene.show_new_game()
 			await check_page("new-%s-%d" % [language, dimensions.x])
 			scene.show_settings()
 			await check_page("settings-%s-%d" % [language, dimensions.x])
+			scene.overlay.find_child("SettingsSection1", true, false).press()
+			await check_page("settings-display-%s-%d" % [language, dimensions.x])
+			scene.overlay.find_child("SettingsSection2", true, false).press()
+			await check_page("settings-audio-%s-%d" % [language, dimensions.x])
 			scene.show_saves()
 			await check_page("saves-%s-%d" % [language, dimensions.x])
 			scene.show_pause()

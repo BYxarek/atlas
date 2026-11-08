@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Place the main actions on the left and show the map, GitHub project link and installed game version on the right.
+- Split settings into Interface, Display and Audio pages. Keep toggle row backgrounds stable on hover and make overflowing menus scroll on desktop and mobile.
+- Check the latest stable GitHub release at startup. Show the release notes and a GitHub link when a newer version is available.
+
 ## 0.3.0 — 2026-11-08
 
 - Make the mobile page transition test independent of runner frame timing.

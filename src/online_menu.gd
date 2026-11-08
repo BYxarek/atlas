@@ -40,7 +40,6 @@ func show_required_mods(profile: Array) -> void:
 	ui.page = "mods_download"
 	ui.game.paused = true
 	ui.menu_frame(L.text("Нужны моды комнаты"), L.text("Установить точные версии модов и подключиться после перезапуска?"), 700, 650)
-	ui.menu_scroll()
 	for item in profile:
 		ui.menu_body.add_child(ui.paragraph("%s · %s · %d KB" % [item.name, item.version, int(item.size) / 1024]))
 	if profile.is_empty(): ui.menu_body.add_child(ui.paragraph(L.text("Эта комната работает без модов. Текущие сетевые моды будут отключены.")))
