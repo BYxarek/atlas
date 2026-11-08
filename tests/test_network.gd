@@ -15,6 +15,14 @@ func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
+	var quality = Session.Quality.new()
+	check(quality.failure_percent() == -1 and quality.ping_ms(0) == -1, "Connection quality waits for samples")
+	quality.record(34, 1000)
+	quality.record(-1, 2000)
+	check(quality.failure_percent() == 50 and quality.ping_ms(2000) == 34, "A failed probe contributes to the rate without overwriting ping")
+	check(quality.ping_ms(13001) == -1, "Old RTT samples expire")
+	for i in 20: quality.record(22, 14000 + i)
+	check(quality.failure_percent() == 0 and quality.ping_ms(14020) == 22, "Failure rate uses the most recent 20 samples")
 	var w = World.new()
 	var players = {"a": {"name": "A", "color": "69dfbd"}, "b": {"name": "B", "color": "73aeef"}}
 	check(w.add_faction("a", 0, "69dfbd") and w.add_faction("b", 1, "73aeef"), "Create separate factions")

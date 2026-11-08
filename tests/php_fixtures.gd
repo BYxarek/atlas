@@ -10,6 +10,7 @@ func snapshot(action: Array) -> void:
 		var view = w.view(slot, players).game
 		var state = {}
 		for key in ["home", "coins", "units", "levels", "mission", "reports", "operations", "conquests", "nukes", "victories", "defeats", "countries", "battles"]: state[key] = view[key]
+		if w.countries.any(func(c): return c.has("microstate")): state.wars = view.wars
 		states[slot] = state.duplicate(true)
 	fixtures.append({"action": action, "elapsed": w.elapsed, "owners": w.owners.duplicate(), "states": states,
 		"occupations": w.occupations.duplicate(true), "random_state": w.random_state, "bot_profiles": w.bot_profiles.duplicate(true)})
@@ -75,6 +76,31 @@ func _initialize() -> void:
 				assert(resumed.restore_data(saved, players), "Long session must restore")
 				w = resumed
 				snapshot(["roundtrip"])
+	var microstate_outcomes = {}
+	for seed_value in [1, 5, 17, 2026]:
+		w = World.new()
+		w.random_state = seed_value
+		players = {"a": {"name": "A", "color": "69dfbd"}, "b": {"name": "B", "color": "73aeef"}}
+		w.add_faction("a", 1, "69dfbd")
+		w.add_faction("b", 3, "73aeef")
+		snapshot(["reset", seed_value])
+		w.factions.a.units = [100000, 10000, 1000]
+		snapshot(["army", "a", 100000, 10000, 1000])
+		for name in ["Italy", "France"]:
+			var target = -1
+			for c in w.factions.a.atlas:
+				if c.english == name: target = int(c.id)
+			assert(w.command("a", "attack", [target]))
+			snapshot(["command", "a", "attack", target])
+			for i in 4: w.tick([])
+			snapshot(["tick", 4])
+		for id in World.Game.MICROSTATES:
+			if w.countries[id].has("microstate"): microstate_outcomes[w.countries[id].microstate] = true
+		var resumed = World.new()
+		assert(resumed.restore_data(JSON.parse_string(JSON.stringify(w.export_data())), players))
+		w = resumed
+		snapshot(["roundtrip"])
+	assert(microstate_outcomes.has("accepted") and microstate_outcomes.has("war"))
 	var file = FileAccess.open("res://build/php-fixtures.json", FileAccess.WRITE)
 	file.store_string(JSON.stringify(fixtures))
 	file.close()

@@ -1,16 +1,18 @@
 # ATLAS — World Domination
 
+Mods can customize game data, art, UI and gameplay code. See the [mod guide](docs/MODS.md).
+
 English | [Русский](README.ru.md)
 
 An open-source native 2D world-conquest strategy game for **Windows and Android**, built with Godot 4.8-beta2. Choose a country, grow an economy, upgrade your army, gather intelligence and conquer the map. Play solo or against friends and bots on servers you control.
 
-**Version: 0.2.0 — battle reports and session-specific bot strategies.** This is a source-only release. Android Studio emulator checks and remaining limitations are documented in [the validation report](docs/ANDROID_VALIDATION_2026-11-05.md).
+**Version 0.3.0 on `main`** adds the natural 2.5D map, animated battle fronts, mod support and public lobby diagnostics.
 
 [Project presentation](https://byxarek.github.io/atlas/) · [Game mechanics](docs/MECHANICS.md) · [Documentation index](docs/README.md)
 
 ## Download and play
 
-Get the source from [GitHub Releases](https://github.com/BYxarek/atlas/releases/tag/v0.2.0), then follow [Build from source](docs/BUILDING.md). Version 0.2.0 has no attached local builds. The build scripts produce:
+Get the current source from [`main`](https://github.com/BYxarek/atlas/tree/main) and follow [Build from source](docs/BUILDING.md). The build scripts produce these files:
 
 | File | Purpose |
 | --- | --- |
@@ -23,7 +25,7 @@ Android includes armeabi-v7a, arm64-v8a, x86 and x86_64 libraries. Install updat
 
 ## Features
 
-- A full-window world map with 176 territories, country colors and animated operations.
+- A full-window world map with 244 territories, country colors and animated operations.
 - Infantry, aircraft and naval recruitment and technology upgrades.
 - One to five businesses per country; each level produces one coin per second.
 - Spies, reconnaissance reports and uncertain attack warnings 60–300 game seconds in advance.
@@ -31,7 +33,7 @@ Android includes armeabi-v7a, arm64-v8a, x86 and x86_64 libraries. Install updat
 - Separate campaigns, manual snapshots, autosaves and backup files.
 - Sound effects, notification animations, statistics and an event journal.
 - Touch controls, pinch zoom, portrait/landscape layouts and Android Back handling.
-- Multiplayer lobbies with readiness, bots, reconnecting and player management; up to 176 player/bot slots.
+- Multiplayer lobbies with readiness, bots, reconnecting and player management; up to 239 player/bot slots.
 - LAN hosting, authoritative VPS WebSocket servers and authoritative PHP/HTTPS servers. Windows and Android use the same protocols.
 
 Every selected starting country receives the same army and treasury: 35 infantry, 8 aircraft, 4 ships and 180 coins. Neutral-country strength uses game-specific values calibrated to the Global Firepower 2026 ordering, not real troop counts. In solo play your last country is protected from invasions; PvP can eliminate a player.

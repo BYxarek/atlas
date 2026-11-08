@@ -19,4 +19,12 @@ func _initialize():
 ''')
     result = subprocess.run([sys.executable, str(ROOT / 'tools/test_godot.py'), str(script)], capture_output=True, text=True)
     assert result.returncode == 1 and 'SCRIPT ERROR:' in result.stdout, result.stdout + result.stderr
-print('PASS: CI rejects runtime errors followed by quit(0)')
+    script.write_text('''extends SceneTree
+func _initialize():
+    push_error("deliberate engine-error probe")
+    print("PASS: deliberate engine-error probe")
+    quit(0)
+''')
+    result = subprocess.run([sys.executable, str(ROOT / 'tools/test_godot.py'), str(script)], capture_output=True, text=True)
+    assert result.returncode == 1 and 'ERROR:' in result.stdout, result.stdout + result.stderr
+print('PASS: CI rejects runtime and engine errors followed by quit(0)')

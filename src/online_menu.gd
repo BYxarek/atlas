@@ -13,6 +13,68 @@ var server_address = ""
 var code = ""
 var server_status: Label
 var php_mode = false
+const Mods = preload("res://src/mods.gd")
+var mod_progress: Label
+var lobby_telemetry: Label
+var lobby_ping_rows: Dictionary = {}
+
+func setup_mods() -> void:
+	net.mods.required.connect(show_required_mods)
+	net.mods.progress.connect(func(done, total):
+		if is_instance_valid(mod_progress): mod_progress.text = "%d / %d KB" % [done / 1024, total / 1024])
+	net.mods.failed.connect(func(problem):
+		ui.message(L.text("Моды"), problem)
+		show_required_mods(net.mods.offered))
+	net.mods.downloaded.connect(func():
+		ui.page = "mods_download"
+		ui.menu_frame(L.text("Моды установлены"), L.text("Перезапустите игру, чтобы применить моды и вернуться в комнату."), 650, 350)
+		ui.menu_body.add_child(ui.button(L.text("Перезапустить и подключиться"), restart_for_mods)))
+	if FileAccess.file_exists(Mods.NETWORK_BOOT) and Engine.get_meta("atlas_network_mode", false):
+		var boot = JSON.parse_string(FileAccess.get_file_as_string(Mods.NETWORK_BOOT))
+		if boot is Dictionary and boot.get("target", {}) is Dictionary and not boot.get("target", {}).is_empty():
+			var target = boot.target
+			Mods.write_network_boot(Engine.get_meta("atlas_network_profile", []))
+			resume_connection.call_deferred(target)
+
+func show_required_mods(profile: Array) -> void:
+	ui.page = "mods_download"
+	ui.game.paused = true
+	ui.menu_frame(L.text("Нужны моды комнаты"), L.text("Установить точные версии модов и подключиться после перезапуска?"), 700, 650)
+	ui.menu_scroll()
+	for item in profile:
+		ui.menu_body.add_child(ui.paragraph("%s · %s · %d KB" % [item.name, item.version, int(item.size) / 1024]))
+	if profile.is_empty(): ui.menu_body.add_child(ui.paragraph(L.text("Эта комната работает без модов. Текущие сетевые моды будут отключены.")))
+	ui.menu_body.add_child(ui.paragraph(L.text("Сетевые пакеты устанавливаются отдельно от одиночных модов. Игра проверит размер, версии и SHA-256 перед применением.")))
+	ui.menu_body.add_child(ui.button(L.text("Установить все нужные моды"), func():
+		if not ui.autosave(): return
+		ui.clear_box(ui.menu_body)
+		mod_progress = ui.paragraph(L.text("Загрузка модов…"))
+		ui.menu_body.add_child(mod_progress)
+		ui.menu_body.add_child(ui.button(L.text("Отмена"), func(): net.shutdown("")))
+		net.mods.begin(), true))
+	ui.menu_body.add_child(ui.button(L.text("Отмена"), func(): net.shutdown("")))
+
+func restart_for_mods() -> void:
+	if not ui.autosave(): return
+	if OS.has_feature("android") or Engine.is_embedded_in_editor():
+		ui.message(L.text("Моды"), L.text("Закройте и снова откройте игру. Нужный профиль и подключение уже сохранены."))
+		return
+	var args = PackedStringArray()
+	if OS.has_feature("editor"): args = PackedStringArray(["--path", ProjectSettings.globalize_path("res://")])
+	OS.set_restart_on_exit(true, args)
+	ui.get_tree().quit()
+
+func resume_connection(target: Dictionary) -> void:
+	if not target.get("kind") in ["lan", "vps", "php"] or not target.get("address") is String or not target.get("name") is String: return
+	nickname = target.name
+	var error: Error
+	if target.kind == "lan":
+		error = net.join_room(target.address, nickname, int(target.get("port", 24760)))
+	else:
+		net.mods.resume = {"action": target.get("action", "list"), "args": target.get("args", [])}
+		error = net.join_php(target.address, nickname, str(target.get("nonce", ""))) if target.kind == "php" else net.join_directory(target.address, nickname)
+	if error != OK: ui.message(L.text("Подключение"), error_string(error))
+	else: show_connecting()
 
 func show_browser() -> void:
 	ui.page = "online"
@@ -141,11 +203,11 @@ func refresh_server_rooms() -> void:
 	for entry in net.directory_rooms:
 		var box = ui.box_panel(rooms)
 		box.add_child(ui.paragraph(entry.name + (L.text(" · ваша партия") if entry.member else ""), ui.MINT if entry.member else ui.INK, 16))
-		box.add_child(ui.paragraph(L.text("%d/176 · %s · %s · код %s") % [entry.players, L.text("идёт матч") if entry.stage == "game" else L.text("лобби"), ui.time_text(entry.elapsed), entry.id], ui.MUTED, 11))
+		box.add_child(ui.paragraph(L.text("%d/%d · %s · %s · код %s") % [entry.players, net.MAX_PLAYERS, L.text("идёт матч") if entry.stage == "game" else L.text("лобби"), ui.time_text(entry.elapsed), entry.id], ui.MUTED, 11))
 		var row = HBoxContainer.new()
 		box.add_child(row)
 		var join = ui.button(L.text("Вернуться") if entry.member else L.text("Войти"), func(): net.directory_request("join", [entry.id]), true)
-		join.disabled = entry.players >= 8 and not entry.member
+		join.disabled = entry.players >= net.MAX_PLAYERS and not entry.member
 		row.add_child(join)
 		if entry.admin:
 			row.add_child(ui.button(L.text("Удалить комнату"), func(): ui.confirm_action(L.text("Удалить комнату?"), L.text("Сервер удалит партию и её сохранение. Все игроки должны предварительно выйти."), func(): net.directory_request("delete", [entry.id]))))
@@ -155,7 +217,7 @@ func refresh_lan_rooms() -> void:
 	rooms.add_child(ui.label(L.text("ЛОКАЛЬНЫЕ ЛОББИ"), 12, ui.MINT))
 	if net.found.is_empty(): rooms.add_child(ui.paragraph(L.text("Пока не найдены. Хост и игроки должны находиться в одной сети.")))
 	for entry in net.found:
-		rooms.add_child(ui.button("%s · %d/176 · %s:%d · %s" % [entry.name, entry.players, entry.address, entry.port, L.text("в игре") if entry.stage == "game" else L.text("лобби")], func():
+		rooms.add_child(ui.button("%s · %d/%d · %s:%d · %s" % [entry.name, entry.players, net.MAX_PLAYERS, entry.address, entry.port, L.text("в игре") if entry.stage == "game" else L.text("лобби")], func():
 			var error = net.join_room(entry.address, nickname, int(entry.port))
 			if error != OK: ui.message(L.text("Подключение"), error_string(error))
 			else: show_connecting()))
@@ -178,10 +240,15 @@ func show_lobby() -> void:
 	ui.page = "lobby"
 	ui.game.paused = true
 	ui.sound.sync()
-	ui.menu_frame(net.lobby_name, L.text("Лобби · %d/176%s") % [net.players.size(), L.text(" · вы администратор") if net.is_admin() else ""], 820, 800)
+	ui.menu_frame(net.lobby_name, L.text("Лобби · %d/%d%s") % [net.players.size(), net.MAX_PLAYERS, L.text(" · вы администратор") if net.is_admin() else ""], 820, 800)
 	if net.directory_client:
 		ui.menu_body.add_child(ui.button(L.text("Скопировать приглашение"), func(): DisplayServer.clipboard_set(net.server_url + " · " + net.room_id)))
 	ui.menu_body.add_child(ui.paragraph(L.render(net.status), ui.GOLD, 12))
+	lobby_ping_rows.clear()
+	if net.directory_client:
+		lobby_telemetry = ui.paragraph("", ui.INK, 12)
+		lobby_telemetry.name = "LobbyTelemetry"
+		ui.menu_body.add_child(lobby_telemetry)
 	var scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size.y = 240
@@ -197,6 +264,8 @@ func show_lobby() -> void:
 		var text = "%s%s · %s · %s" % [L.render(p.name) if p.bot else p.name, L.text(" (вы)") if slot == net.my_slot else "", L.country(ui.game.atlas[int(p.home)]), L.text("бот ✓") if p.bot else (L.text("отключён") if not p.connected else (L.text("готов ✓") if p.ready else L.text("не готов")))]
 		var description = ui.paragraph(text, Color(p.color), 14)
 		row.add_child(description)
+		if net.directory_client and not p.bot and p.connected:
+			lobby_ping_rows[slot] = {"label": description, "base": text}
 		if net.is_admin() and slot != net.host_slot:
 			row.add_child(ui.button(L.text("Удалить"), func(): ui.confirm_action(L.text("Удалить участника?"), L.text("Его территории станут нейтральными. Место освободится для нового игрока."), func(): net.request("kick", [slot]))))
 	var me = net.players[net.my_slot]
@@ -249,3 +318,19 @@ func show_lobby() -> void:
 		row.add_child(start)
 		ui.menu_body.add_child(ui.paragraph(L.render(net.start_error()), ui.GOLD, 12))
 	ui.menu_body.add_child(ui.button(L.text("Покинуть лобби"), ui.leave_network))
+	ui.update_performance_overlay()
+
+func update_telemetry(frame_rate: int) -> void:
+	if not is_instance_valid(lobby_telemetry): return
+	var failures = net.quality.failure_percent()
+	var percent = "%d%%" % failures if failures >= 0 else "—"
+	var failure_text = L.text("Сбои запросов %s" if net.php != null else "Тайм-ауты проб %s") % percent
+	var text = "%s · %s · %s" % [ping_text(net.my_slot), L.text("Потери пакетов —"), failure_text]
+	lobby_telemetry.text = "FPS %d · %s" % [frame_rate, text] if frame_rate >= 0 else text
+	for slot in lobby_ping_rows:
+		var entry = lobby_ping_rows[slot]
+		entry.label.text = entry.base + " · " + ping_text(slot)
+
+func ping_text(slot: String) -> String:
+	var ping = net.player_ping_ms(slot)
+	return L.text("Пинг %s") % (L.text("%d мс") % ping if ping >= 0 else "—")

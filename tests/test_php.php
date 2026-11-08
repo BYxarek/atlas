@@ -25,7 +25,7 @@ foreach (json_decode(file_get_contents(__DIR__.'/../build/php-fixtures.json'),tr
     $a=$fixture['action'];
     switch ($a[0]) {
         case 'init': $world['random_state']=$a[1]; $sim->add($world,'a',0,'69dfbd'); $sim->add($world,'b',1,'73aeef'); break;
-        case 'reset': $world=$sim->create(); $world['random_state']=$a[1]; $sim->add($world,'a',1,'69dfbd'); $sim->add($world,'b',3,'73aeef'); break;
+        case 'reset': $world=$sim->create(); $world['random_state']=$a[1]; $players=['a'=>['name'=>'A','color'=>'69dfbd'],'b'=>['name'=>'B','color'=>'73aeef']]; $sim->add($world,'a',1,'69dfbd'); $sim->add($world,'b',3,'73aeef'); break;
         case 'army': $world['factions'][$a[1]]['units']=array_slice($a,2); break;
         case 'command': check($sim->command($world,$a[1],$a[2],array_slice($a,3)),'Fixture command '.$index); break;
         case 'tick': for($i=0;$i<$a[1];$i++)$sim->tick($world,[]); break;
@@ -54,8 +54,8 @@ foreach (json_decode(file_get_contents(__DIR__.'/../build/php-fixtures.json'),tr
 }
 $state=['version'=>1,'rooms'=>[],'users'=>[]];
 $config=['max_rooms'=>2,'lease_seconds'=>20,'poll_ms'=>1000]; $now=10000;
-$a=atlas_api($state,['action'=>'connect','token'=>str_repeat('a',48),'nonce'=>str_repeat('a',32),'name'=>'A','protocol'=>2],$config,$now)['session'];
-$b=atlas_api($state,['action'=>'connect','token'=>str_repeat('b',48),'nonce'=>str_repeat('b',32),'name'=>'B','protocol'=>2],$config,$now)['session'];
+$a=atlas_api($state,['action'=>'connect','token'=>str_repeat('a',48),'nonce'=>str_repeat('a',32),'name'=>'A','protocol'=>5],$config,$now)['session'];
+$b=atlas_api($state,['action'=>'connect','token'=>str_repeat('b',48),'nonce'=>str_repeat('b',32),'name'=>'B','protocol'=>5],$config,$now)['session'];
 function request(string $session,string $action,array $args=[],?string $command=null): array {
     global $state,$config,$now;
     $data=['session'=>$session,'action'=>$action,'args'=>$args];
@@ -66,6 +66,13 @@ function request(string $session,string $action,array $args=[],?string $command=
 $reply=request($a,'create',['Alpha']); $room=$reply['lobby']['room']; $owner=$reply['lobby']['slot'];
 check($owner===$reply['lobby']['host'],'Creator is administrator');
 request($b,'join',[$room]);
+atlas_api($state,['session'=>$b,'action'=>'poll','ping_ms'=>37],$config,$now);
+$reply=request($a,'poll'); $guest='p_'.substr($state['users'][$b]['digest'],0,16);
+check(((array)$reply['pings'])[$guest]===37 && !isset(((array)$reply['lobby']['players'])[$guest]['ping_at']),'Lobby ping stays separate from player snapshots');
+atlas_api($state,['session'=>$b,'action'=>'poll','ping_ms'=>8001],$config,$now);
+check(((array)request($a,'poll')['pings'])[$guest]===37,'Reject out-of-range pings');
+$now+=13;
+check(!isset(((array)request($a,'poll')['pings'])[$guest]),'Old lobby ping expires');
 $reply=request($b,'game',[],'bot'); check(isset($reply['error']) && count((array)$reply['lobby']['players'])===2,'Reject foreign administration');
 request($a,'game',[true],'ready'); request($b,'game',[true],'ready'); $reply=request($a,'game',[],'start');
 check($reply['view']['game']['units']===[35,8,4],'Minimum equal start');
@@ -96,12 +103,12 @@ request($remaining,'leave'); request($remaining,'delete',[$room]);
 check(!$state['rooms'],'Delete owned room');
 $crowded=['host'=>'host','players'=>[],'world'=>null,'stage'=>'lobby'];
 $crowded['players']['host']=atlas_player($crowded,'','Host',false,$now);
-foreach ([-1,0,1.5,'2',176] as $count) {
+foreach ([-1,0,1.5,'2',atlas_start_country_count()] as $count) {
     try { atlas_lobby_action($crowded,'host','bot',[$count],$now,$sim); check(false,'Invalid count accepted'); }
     catch (DomainException $error) { check(count($crowded['players'])===1,'Invalid count is atomic'); }
 }
-atlas_lobby_action($crowded,'host','bot',[175],$now,$sim);
-check(count($crowded['players'])===176 && count(array_unique(array_column($crowded['players'],'home')))===176,'Full room has unique countries');
+atlas_lobby_action($crowded,'host','bot',[atlas_start_country_count()-1],$now,$sim);
+check(count($crowded['players'])===atlas_start_country_count() && count(array_unique(array_column($crowded['players'],'home')))===atlas_start_country_count(),'Full room has unique countries');
 $battle=$sim->create(); $sim->add($battle,'a',0,'69dfbd'); $sim->add($battle,'b',1,'73aeef');
 $battle['factions']['a']['units']=[1000,100,100];
 check($sim->command($battle,'a','attack',[1],true),'Surprise command accepted');
@@ -126,4 +133,12 @@ while ((($battle['random_state']*48271%2147483647)*48271%2147483647)%100>=20) $b
 $battle['occupations'][$strong]['due']=$battle['elapsed']+1;
 $sim->tick($battle,[]);
 check($battle['owners'][$strong]==='b' && !isset($battle['occupations'][$strong]),'Rebels restore eliminated previous owner after storage roundtrip');
+$legacy=$sim->create(); $legacy['countries']=array_slice($legacy['countries'],0,176); $legacy['owners']=array_slice($legacy['owners'],0,176);
+$legacy['countries'][0]['businesses']=[9];
+$sim->expand_legacy_map($legacy);
+check(count($legacy['countries'])===244 && count($legacy['owners'])===244 && $legacy['countries'][0]['businesses']===[9],'Old PHP worlds expand without replacing existing progress');
+$hidden=$sim->create(); $sim->add($hidden,'a',0,'69dfbd');
+foreach ($map['atlas'] as $id=>$country) if ($country['enclave_hosts']) {
+    check(!$sim->command($hidden,'a','spy',[$id]) && !$sim->command($hidden,'a','attack',[$id]),'Hidden microstates cannot be targeted by HTTP commands');
+}
 echo "PASS: $checks PHP checks\n";

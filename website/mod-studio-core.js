@@ -42,7 +42,7 @@
    if(d.api!==2)add('api','Editor supports API 2; native payloads are preserved but never executed');
    if(!id(d.id))add('id','Use 1–64 lowercase ASCII letters, digits, _ or -');
    for(const k of ['name','version','game_version'])if(typeof d[k]!=='string'||!d[k].length||d[k].length>160)add(k,'Expected nonempty text, max 160 characters');
-   if(d.game_version!=='0.2.0')add('game_version','Expected game version 0.2.0');
+   if(d.game_version!=='0.3.0')add('game_version','Expected game version 0.3.0');
    for(const k of ['requires','conflicts']){const v=d[k]||[];if(!Array.isArray(v)||v.length>32||v.some(x=>!id(x)||x===d.id))add(k,'Invalid mod references');}
    const balance={...base,...(d.network_balance||{}),...(d.changes||{})};
    if(keys(d.changes||{},Object.keys(base),'changes'))for(const [k,v] of Object.entries(d.changes||{})){
@@ -157,7 +157,7 @@
    return {changes,risks,savePolicy:'Exact package profile required. No automatic save migration.'};
  }
  function compose(documents){
-   const d={api:2,id:'profile',name:'Combined profile',version:'1',game_version:'0.2.0',changes:{},content:{}};
+   const d={api:2,id:'profile',name:'Combined profile',version:'1',game_version:'0.3.0',changes:{},content:{}};
    for(const mod of documents){d.changes={...d.changes,...mod.network_balance,...mod.changes};for(const [key,value]of Object.entries(mod.content||{})){if(!['units','buildings','technologies','events','panels','translations','theme','assets','scenario','victory','map','ai'].includes(key))throw Error(mod.id+'.content.'+key+': unknown field');
      if(['units','buildings','technologies','events','panels'].includes(key)){if(!Array.isArray(value))throw Error(mod.id+'.content.'+key+': expected array');d.content[key]=[...(d.content[key]||[]),...clone(value)];}
      else if(key==='translations'){d.content.translations??={};for(const [locale,catalog]of Object.entries(value))d.content.translations={...d.content.translations,[locale]:{...d.content.translations[locale],...clone(catalog)}};}

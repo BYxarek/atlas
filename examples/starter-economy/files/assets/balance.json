@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "microstate_accept_chance": 50,
+  "unit_cost": [
+    12,
+    28,
+    36
+  ],
+  "unit_weight": [
+    1,
+    3,
+    4
+  ],
+  "recruit_units": [
+    10,
+    3,
+    2
+  ],
+  "start_units": [
+    35,
+    8,
+    4
+  ],
+  "start_coins": 1000,
+  "nuclear_threshold": 10,
+  "technology_bonus": 0.25,
+  "technology_cost": 65,
+  "business_cost": 25,
+  "spy_cost": 20,
+  "spy_seconds": 6,
+  "attack_cost": 25,
+  "naval_cost": 55,
+  "naval_ships": 4,
+  "naval_multiplier": 0.85,
+  "attack_seconds": 4,
+  "nuke_seconds": 3,
+  "loot": 30,
+  "attack_loss": 0.23,
+  "attack_loss_min": 0.04,
+  "attack_loss_max": 0.55,
+  "defender_retreat_loss": 0.35,
+  "defender_hold_loss": 0.12,
+  "bot_seconds": 4,
+  "bot_upgrade_coins": 150,
+  "bot_max_level": 6,
+  "bot_favorite_chance": 60,
+  "bot_economy_bonus": 25,
+  "bot_style_risk": 10,
+  "surprise_chance": 20
+}

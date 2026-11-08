@@ -1,5 +1,7 @@
 extends RefCounted
 
+const Quality = preload("res://src/network_quality.gd")
+
 var hub: Node
 var data_path = "user://server"
 var max_rooms = 8
@@ -52,9 +54,9 @@ func connected(id: int) -> void:
 		return
 	pending[id] = Time.get_ticks_msec()
 
-func hello(id: int, nickname: String, token: String, wants_directory: bool, version: int) -> void:
+func hello(id: int, nickname: String, token: String, wants_directory: bool, version: int, mod_hashes: Array = []) -> void:
 	if id <= 1 or users.has(id): return
-	if not wants_directory or version != hub.WIRE_VERSION or nickname.length() > 64 or not hub.valid_token(token):
+	if not hub.mods.hashes_valid(mod_hashes) or not wants_directory or version != hub.WIRE_VERSION or nickname.length() > 64 or not hub.valid_token(token):
 		hub._reject_peer(id, "Нужна совместимая версия ATLAS и подключение к VPS-серверу.")
 		return
 	var digest = token.sha256_text()
@@ -62,7 +64,7 @@ func hello(id: int, nickname: String, token: String, wants_directory: bool, vers
 		hub._reject_peer(id, "Этот профиль уже подключён к серверу.")
 		return
 	pending.erase(id)
-	users[id] = {"name": hub.clean_name(nickname), "token": token, "digest": digest, "room": "", "created": -10000}
+	users[id] = {"name": hub.clean_name(nickname), "token": token, "digest": digest, "room": "", "created": -10000, "mods": mod_hashes}
 	send_list(id, true)
 
 func request(id: int, action: String, args: Array) -> void:
@@ -74,6 +76,12 @@ func request(id: int, action: String, args: Array) -> void:
 	limits[id] = limit
 	if limit.count > 10: return
 	var user = users[id]
+	if action == "quality":
+		if args.size() == 1 and args[0] is Dictionary: echo_quality(id, args[0], now)
+		return
+	if action in ["join", "create"] and user.mods != hub.mods.hashes():
+		hub.mods.offer(id)
+		return
 	if action == "leave":
 		leave_room(id)
 		send_list(id, true)
@@ -143,16 +151,39 @@ func fail(id: int, text: String) -> void:
 func game_request(id: int, action: String, args: Array) -> void:
 	if users.has(id) and rooms.has(users[id].room): rooms[users[id].room].apply_request(id, action, args)
 
+func echo_quality(id: int, probe: Dictionary, now: int) -> void:
+	var user = users[id]
+	var room = rooms.get(user.room)
+	var echo = probe.get("echo")
+	if room == null or room.stage != "lobby" or room.slot_for_peer(id).is_empty() or not hub.can_send(id): return
+	if not echo is int or echo < 1 or echo > 2147483647: return
+	var ping = probe.get("ping_ms")
+	if Quality.valid_ping(ping):
+		user.ping_ms = ping
+		user.ping_at = now
+	var pings = {}
+	for slot in room.players:
+		var player = room.players[slot]
+		if player.bot or not player.connected: continue
+		var member = users.get(player.peer, {})
+		if member.get("room") == user.room and member.has("ping_ms") and now - member.ping_at <= Quality.FRESH_MS:
+			pings[slot] = member.ping_ms
+	hub._directory_update.rpc_id(id, {"quality_echo": echo, "room": user.room, "pings": pings})
+
 func leave_room(id: int) -> void:
 	if not users.has(id): return
 	var room_id = users[id].room
 	users[id].room = ""
+	users[id].erase("ping_ms")
+	users[id].erase("ping_at")
 	if rooms.has(room_id): rooms[room_id]._peer_left(id)
 
 func disconnected(id: int) -> void:
 	leave_room(id)
 	users.erase(id)
 	pending.erase(id)
+	hub.mods.offers.erase(id)
+	hub.mods.last_sent.erase(id)
 	limits.erase(id)
 
 func send_list(id: int, browse: bool = false) -> void:

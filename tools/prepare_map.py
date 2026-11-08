@@ -23,7 +23,22 @@ for feature in source["features"]:
                       "center": center, "rings": rings, "neighbors": []})
 for i, country in enumerate(countries):
     country["neighbors"] = [j for j in range(len(countries)) if j != i and vertices[i] & vertices[j]]
-assert len(countries) > 170
+additions = json.loads((ROOT / "tools/map_additions.json").read_text(encoding="utf-8"))
+for country in additions["countries"]:
+    countries.append({**country, "id": len(countries), "neighbors": []})
+ids = {c["english"]: c["id"] for c in countries}
+for addition in additions["countries"]:
+    i = ids[addition["english"]]
+    for name in addition["neighbors"]:
+        j = ids[name]
+        if j not in countries[i]["neighbors"]: countries[i]["neighbors"].append(j)
+        if i not in countries[j]["neighbors"]: countries[j]["neighbors"].append(i)
+for country in countries:
+    country["sovereign"] = ids[additions["sovereigns"].get(country["english"], country["english"])]
+    country["enclave_hosts"] = [ids[name] for name in additions["enclaves"].get(country["english"], [])]
+for country in countries:
+    country["dependencies"] = [c["id"] for c in countries if c["sovereign"] == country["id"] and c["id"] != country["id"]]
+assert len(countries) == 244
 assert all(c["rings"] and c["name"] for c in countries)
 (ROOT / "assets/world.json").write_text(json.dumps(countries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 print(f"Prepared {len(countries)} countries")

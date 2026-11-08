@@ -24,17 +24,21 @@ func _init() -> void:
 
 func add_faction(slot: String, home: int, color: String) -> bool:
 	if factions.has(slot) or home < 0 or home >= countries.size() or owners[home] != "": return false
+	if home in Game.MICROSTATES: return false
 	var game = Game.new()
 	game.network_game = true
 	game.player_color = Color(color)
 	game.start(home)
 	game.elapsed = elapsed
+	for id in countries.size():
+		if game.countries[id].owned and owners[id] != "": return false
 	factions[slot] = game
 	cues[slot] = ["start"]
 	var queue = cues[slot]
 	game.sound_requested.connect(func(cue):
 		if queue.size() < 40: queue.append(cue))
-	owners[home] = slot
+	for id in countries.size():
+		if game.countries[id].owned: owners[id] = slot
 	return true
 
 func remove_faction(slot: String) -> void:
@@ -54,25 +58,33 @@ func project(slot: String) -> void:
 	var g = factions[slot]
 	g.countries = countries.duplicate(true)
 	g.enemy_levels = {}
+	g.enemy_bonuses = {}
 	for i in owners.size():
 		g.countries[i].owned = owners[i] == slot
 		if factions.has(owners[i]):
 			g.countries[i].units = factions[owners[i]].units.duplicate()
 			g.enemy_levels[str(i)] = factions[owners[i]].levels.duplicate()
-	g.finished = g.owned_count() == 0 or g.owned_count() == countries.size()
+			g.enemy_bonuses[str(i)] = range(Game.UNIT_COUNT).map(func(index): return Game.Runtime.unit_bonus(factions[owners[i]], index))
+	g.allied_countries = []
+	for i in owners.size():
+		if owners[i] != "" and factions.has(owners[i]) and Game.Runtime.allied(g.home, factions[owners[i]].home): g.allied_countries.append(i)
+	g.finished = g.owned_count() == 0 or g.controls_world() or g.mod_state.get("result", "") == "lose"
 
 func commit(slot: String) -> void:
 	var g = factions[slot]
 	for i in owners.size():
+		if g.countries[i].has("microstate"): countries[i]["microstate"] = g.countries[i].microstate
 		if g.countries[i].owned:
 			owners[i] = slot
 			countries[i].businesses = g.countries[i].businesses.duplicate()
+			if g.countries[i].has("structures"): countries[i].structures = g.countries[i].structures.duplicate()
+		elif owners[i] == slot: owners[i] = ""
 		elif owners[i] == "": countries[i].units = g.countries[i].units.duplicate()
 
 func command(slot: String, action: String, args: Array) -> bool:
 	if not factions.has(slot) or args.size() > 2: return false
 	for arg in args:
-		if not arg is int or arg < 0 or arg > 175: return false
+		if not arg is int or arg < 0 or arg >= maxi(Game.COUNTRY_COUNT, 32): return false
 	project(slot)
 	var g = factions[slot]
 	var accepted = false
@@ -83,6 +95,10 @@ func command(slot: String, action: String, args: Array) -> bool:
 			if args.size() == 1: accepted = g.upgrade_army(args[0])
 		"business":
 			if args.size() == 2: accepted = g.upgrade_business(args[0], args[1])
+		"construct":
+			if args.size() == 2: accepted = Game.Runtime.construct(g, args[0], args[1])
+		"research":
+			if args.size() == 1: accepted = Game.Runtime.research(g, args[0])
 		"spy":
 			if args.size() == 1: accepted = g.spy(args[0])
 		"attack":
@@ -130,7 +146,7 @@ func tick(bot_slots: Array) -> void:
 					other.battles.push_front(report)
 					if other.battles.size() > 20: other.battles.resize(20)
 				if g.countries[target].owned:
-					for i in 3: other.units[i] = maxi(0, other.units[i] - ceili(other.units[i] * Game.B.defender_retreat_loss))
+					for i in Game.UNIT_COUNT: other.units[i] = maxi(0, other.units[i] - ceili(other.units[i] * Game.B.defender_retreat_loss))
 					other.defeats += 1
 					if not target in other.wars: other.wars.append(target)
 					other.log_event("Игрок захватил %s. Отступившие войска сохранились." % g.atlas[target].name)
@@ -151,7 +167,15 @@ func tick(bot_slots: Array) -> void:
 			var target = int(op.target)
 			if op.kind == "attack" and g.countries[target].owned and owners[target] != slot and g.rebel_country(target):
 				occupations[str(target)] = {"previous": owners[target], "owner": slot, "due": elapsed + 120 + roll(301)}
+			if op.kind == "attack" and g.countries[target].owned and owners[target] != slot:
+				for id in Game.MICROSTATES:
+					if owners[id] == "" and not g.country_visible(id) and float(target) in g.atlas[id].enclave_hosts:
+						g.settle_microstate(id, roll() < Game.B.microstate_accept_chance)
 		commit(slot)
+		if not g.finished and g.controls_world():
+			g.finished = true
+			g.log_event("МИР ОБЪЕДИНЁН. Вы завершили мировую кампанию!")
+			cues[slot].append("campaign_win")
 		if slot in bot_slots: g.effects.clear()
 	if elapsed % 30 == 0:
 		for i in owners.size():
@@ -175,7 +199,7 @@ func tick(bot_slots: Array) -> void:
 		if former != "":
 			factions[former].log_event("Повстанцы вернули вам %s." % loser.atlas[id].name)
 			cues[former].append("victory")
-		else: countries[id].units = [10, 0, 0]
+		else: countries[id].units = range(Game.UNIT_COUNT).map(func(i): return 10 if i == 0 else 0)
 		occupations.erase(key)
 
 func declare_war(slot: String, target: int, surprise: bool) -> void:
@@ -197,12 +221,12 @@ func bot_turn(slot: String) -> void:
 	if not bot_profiles.has(slot):
 		var candidate = {}
 		while candidate.is_empty() or candidate in bot_profiles.values():
-			candidate = {"style": roll(3), "risk": 70 + roll(41), "economy": 15 + roll(51), "branch": roll(3)}
+			candidate = {"style": roll(3), "risk": 70 + roll(41), "economy": 15 + roll(51), "branch": roll(Game.UNIT_COUNT)}
 		bot_profiles[slot] = candidate
 	var profile = bot_profiles[slot]
 	var invest = roll() < int(profile.economy) + (int(Game.B.bot_economy_bonus) if profile.style == 0 else 0)
-	var improved = false
-	if invest:
+	var improved = Game.Runtime.bot_invest(g)
+	if invest and not improved:
 		var cheapest = INF
 		var country = -1
 		var business = -1
@@ -219,18 +243,30 @@ func bot_turn(slot: String) -> void:
 		var branch = int(profile.branch)
 		if g.units[2] < Game.B.naval_ships: g.recruit(2)
 		elif g.coins >= Game.B.bot_upgrade_coins and g.levels[branch] < Game.B.bot_max_level: g.upgrade_army(branch)
-		else: g.recruit(branch if roll() < Game.B.bot_favorite_chance else roll(3))
+		else: g.recruit(branch if roll() < Game.B.bot_favorite_chance else roll(Game.UNIT_COUNT))
+	var ai = Game.Runtime.content().ai
+	var retreat = float(ai.get("retreat_ratio", 0))
+	if retreat > 0:
+		g.operations = g.operations.filter(func(op):
+			if op.kind != "attack": return true
+			var id = int(op.target)
+			var defense = g.power(g.countries[id].units, g.enemy_levels.get(str(id), Game.base_levels()), g.enemy_bonuses.get(str(id), []))
+			return g.power(g.units, g.levels) * (1.0 if g.border(id) else Game.B.naval_multiplier) >= defense * retreat)
 	if g.has_operation("attack"): return
 	var target = -1
 	var weakest = INF
 	var threshold = (float(profile.risk) + (int(Game.B.bot_style_risk) if profile.style == 1 else (-int(Game.B.bot_style_risk) if profile.style == 2 else 0))) / 100.0
+	threshold *= float(ai.get("attack_ratio", 1))
 	for i in countries.size():
 		if owners[i] == slot or g.attack_block(i) != "": continue
-		var defense = g.power(g.countries[i].units, g.enemy_levels.get(str(i), [1, 1, 1]))
+		var defense = g.power(g.countries[i].units, g.enemy_levels.get(str(i), Game.base_levels()), g.enemy_bonuses.get(str(i), []))
 		var strength = g.power(g.units, g.levels) * (1.0 if g.border(i) else Game.B.naval_multiplier)
-		if defense <= strength * threshold and defense < weakest:
+		var score = defense
+		if ai.get("targets") == "income": score = -countries[i].businesses.reduce(func(sum, n): return sum + n, 0)
+		elif ai.get("targets") == "nearest": score = (0.0 if g.border(i) else 1e15) + defense
+		if defense <= strength * threshold and score < weakest:
 			target = i
-			weakest = defense
+			weakest = score
 	if target >= 0:
 		if not g.reports.has(str(target)): g.spy(target)
 		if g.dispatch_attack(target): declare_war(slot, target, roll() < Game.B.surprise_chance)
@@ -245,7 +281,7 @@ func view(slot: String, players: Dictionary) -> Dictionary:
 		if owners[i] != "" and players.has(owners[i]):
 			colors[str(i)] = players[owners[i]].color
 			names[str(i)] = players[owners[i]].name
-		if owners[i] != slot: data.countries[i].units = [0, 0, 0]
+		if owners[i] != slot: data.countries[i].units = range(Game.UNIT_COUNT).map(func(_i): return 0)
 	for other in factions:
 		if other == slot: continue
 		for op in factions[other].operations:
@@ -270,16 +306,20 @@ func export_data() -> Dictionary:
 func restore_data(data: Variant, players: Dictionary) -> bool:
 	if not data is Dictionary or not data.get("elapsed") is float and not data.get("elapsed") is int: return false
 	if data.elapsed < 0 or data.elapsed > 100000000 or data.elapsed != floorf(data.elapsed): return false
-	if not data.get("countries") is Array or data.countries.size() != 176 or not data.get("owners") is Array or data.owners.size() != 176: return false
-	if not data.get("factions") is Dictionary or data.factions.size() > 176: return false
+	if data.get("countries") is Array and data.countries.size() == Game.LEGACY_COUNTRY_COUNT and data.get("owners") is Array and data.owners.size() == Game.LEGACY_COUNTRY_COUNT:
+		data = data.duplicate(true)
+		data.countries.append_array(Game.new().countries.slice(Game.LEGACY_COUNTRY_COUNT))
+		while data.owners.size() < Game.COUNTRY_COUNT: data.owners.append("")
+	if not data.get("countries") is Array or data.countries.size() != Game.COUNTRY_COUNT or not data.get("owners") is Array or data.owners.size() != Game.COUNTRY_COUNT: return false
+	if not data.get("factions") is Dictionary or data.factions.size() > Game.COUNTRY_COUNT: return false
 	var profiles = data.get("bot_profiles", {})
-	if not profiles is Dictionary or profiles.size() > 176: return false
+	if not profiles is Dictionary or profiles.size() > Game.COUNTRY_COUNT: return false
 	for slot in profiles:
 		if not players.has(slot) or not data.factions.has(slot) or not profiles[slot] is Dictionary: return false
 		var p = profiles[slot]
 		var validator_profile = Game.new()
 		if not validator_profile.valid_numbers([p.get("style"), p.get("risk"), p.get("economy"), p.get("branch")], 4): return false
-		if p.style > 2 or p.branch > 2 or p.risk < 70 or p.risk > 110 or p.economy < 15 or p.economy > 65: return false
+		if p.style > 2 or p.branch >= Game.UNIT_COUNT or p.risk < 70 or p.risk > 110 or p.economy < 15 or p.economy > 65: return false
 	var restored = {}
 	var saved_random = data.get("random_state", 1)
 	if not (saved_random is int or saved_random is float) or saved_random < 1 or saved_random > 2147483646 or saved_random != floorf(saved_random): return false
@@ -291,16 +331,18 @@ func restore_data(data: Variant, players: Dictionary) -> bool:
 		restored[slot] = g
 	var validator = Game.new()
 	var saved_occupations = data.get("occupations", {})
-	if not saved_occupations is Dictionary or saved_occupations.size() > 176: return false
+	if not saved_occupations is Dictionary or saved_occupations.size() > Game.COUNTRY_COUNT: return false
 	for key in saved_occupations:
 		var entry = saved_occupations[key]
-		if not str(key).is_valid_int() or int(key) < 0 or int(key) >= 176 or not entry is Dictionary: return false
+		if not str(key).is_valid_int() or int(key) < 0 or int(key) >= Game.COUNTRY_COUNT or not entry is Dictionary: return false
 		if not entry.get("previous") is String or (entry.previous != "" and not restored.has(entry.previous)) or not restored.has(entry.get("owner", "")): return false
 		if not validator.valid_numbers([entry.get("due")], 1) or entry.due > data.elapsed + 420: return false
-	for i in 176:
+	for i in Game.COUNTRY_COUNT:
 		if not data.owners[i] is String or (data.owners[i] != "" and not restored.has(data.owners[i])): return false
 		var c = data.countries[i]
-		if not c is Dictionary or not validator.valid_numbers(c.get("units"), 3) or not c.get("businesses") is Array or c.businesses.size() < 1 or c.businesses.size() > 5 or not validator.valid_numbers(c.businesses, c.businesses.size(), 1): return false
+		if not c is Dictionary or not Game.Runtime.valid_structures(c.get("structures", {})): return false
+		if c is Dictionary and c.has("microstate") and (validator.atlas[i].enclave_hosts.is_empty() or not c.microstate in ["accepted", "war"]): return false
+		if not c is Dictionary or not validator.valid_numbers(c.get("units"), Game.UNIT_COUNT) or not c.get("businesses") is Array or c.businesses.size() < 1 or c.businesses.size() > 5 or not validator.valid_numbers(c.businesses, c.businesses.size(), 1): return false
 	countries = data.countries.duplicate(true)
 	for c in countries:
 		c.units = c.units.map(func(n): return int(n))

@@ -7,6 +7,9 @@ var directory: String
 
 func _init(path: String = "user://saves") -> void:
 	directory = path
+	var fingerprint = str(Engine.get_meta("atlas_mods", ""))
+	if path == "user://saves" and not fingerprint.is_empty():
+		directory = "user://mod_saves/" + fingerprint
 
 func autosave(game: RefCounted) -> Error:
 	var error = DirAccess.make_dir_recursive_absolute(directory)

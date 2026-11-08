@@ -12,14 +12,31 @@
 
 ## Natural Earth
 
-Границы стран: Natural Earth, Admin 0 Countries, масштаб 1:110m. Данные находятся в общественном достоянии (public domain).
+Границы стран: Natural Earth, Admin 0 Countries, масштабы 1:110m (основа) и 1:10m (добавленные малые государства и территории). Данные находятся в общественном достоянии (public domain).
 
 - https://www.naturalearthdata.com/about/terms-of-use/
 - Источник: https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_110m_admin_0_countries.geojson
 
 Данные преобразованы скриптом `tools/prepare_map.py`: исключена Антарктида, внешние контуры округлены до 0,001 градуса, добавлены идентификаторы, центры и соседство. Подготовленная карта хранится в `assets/world.json`.
 
-Иконка ATLAS и интерфейс созданы для этого проекта. Внешние шрифты и изображения не включены; используется встроенный шрифт Godot.
+## Природный слой Земли
+
+- Цвет суши: NASA Earth Observatory, Blue Marble Next Generation, снимки за июль 2004 года. https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/
+- Реки и озёра: Natural Earth 1:10m, версия 5.1.2, данные в общественном достоянии. https://www.naturalearthdata.com/downloads/10m-physical-vectors/
+- Лесной покров: NASA Earthdata GIBS, MODIS Combined Land Cover Type, классификация IGBP за 2022 год. https://gibs.earthdata.nasa.gov/layer-metadata/v1.0/MODIS_Combined_L3_IGBP_Land_Cover_Type_Annual.json
+
+Текстуры для проекции атласа подготовлены скриптом `tools/prepare_nature.py`.
+
+## NOAA ETOPO 2022
+
+Высоты и глубины для 2.5D-карты основаны на глобальной модели NOAA National Centers for Environmental Information (NCEI) ETOPO 2022, версия Ice Surface с шагом 60 угловых секунд. Набор общедоступен. Скрипт `tools/prepare_relief.py` создаёт из него компактную текстуру `assets/earth_relief.png` с интервалом 1 градус.
+
+- https://www.ncei.noaa.gov/products/etopo-global-relief-model
+- https://doi.org/10.25921/fd45-gt74
+
+Иконка ATLAS и интерфейс созданы для этого проекта. Для текста используется встроенный шрифт Godot.
+
+Дополнения Natural Earth 1:10m и связи подчинения: tools/map_additions.json. Источник: https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_10m_admin_0_countries.geojson. Военные базы и неопределённые участки из дополнений исключены; исходные 176 идентификаторов сохранены. Ниуэ и Острова Кука оставлены самостоятельными согласно описанию свободной ассоциации МИД Новой Зеландии: https://www.mfat.govt.nz/en/countries-and-regions/australia-and-pacific/niue и https://www.mfat.govt.nz/en/countries-and-regions/australia-and-pacific/cook-islands.
 
 ## Звуки — CC0 1.0
 

@@ -1,0 +1,277 @@
+{
+  "api": 2,
+  "id": "frontier",
+  "name": "Frontier Sandbox",
+  "version": "1.0.0",
+  "game_version": "0.3.0",
+  "description": "Portable content, events, scenario, presentation and partial balance example.",
+  "requires": [],
+  "conflicts": [],
+  "changes": {
+    "start_coins": 250,
+    "attack_seconds": 2
+  },
+  "content": {
+    "units": [
+      {
+        "id": "cannon",
+        "name": "Пушки",
+        "cost": 40,
+        "weight": 6,
+        "recruit": 2,
+        "start": 0,
+        "requires": [
+          "artillery"
+        ]
+      }
+    ],
+    "buildings": [
+      {
+        "id": "forge",
+        "name": "Кузница",
+        "cost": 25,
+        "income": 3,
+        "requires": [
+          "metallurgy"
+        ]
+      }
+    ],
+    "technologies": [
+      {
+        "id": "metallurgy",
+        "name": "Металлургия",
+        "cost": 20,
+        "bonus": 0.1,
+        "unit": "infantry",
+        "income": 1
+      },
+      {
+        "id": "artillery",
+        "name": "Артиллерия",
+        "cost": 30,
+        "requires": [
+          "metallurgy"
+        ],
+        "bonus": 0.25,
+        "unit": "cannon"
+      }
+    ],
+    "map": [
+      {
+        "id": 0,
+        "name": "Область 1",
+        "english": "Region 1",
+        "continent": "Frontier",
+        "center": [
+          -50,
+          20
+        ],
+        "rings": [
+          [
+            [
+              -60,
+              10
+            ],
+            [
+              -40,
+              10
+            ],
+            [
+              -40,
+              30
+            ],
+            [
+              -60,
+              30
+            ],
+            [
+              -60,
+              10
+            ]
+          ]
+        ],
+        "neighbors": [
+          1,
+          2
+        ],
+        "sovereign": 0,
+        "enclave_hosts": [],
+        "dependencies": []
+      },
+      {
+        "id": 1,
+        "name": "Область 2",
+        "english": "Region 2",
+        "continent": "Frontier",
+        "center": [
+          -10,
+          20
+        ],
+        "rings": [
+          [
+            [
+              -20,
+              10
+            ],
+            [
+              0,
+              10
+            ],
+            [
+              0,
+              30
+            ],
+            [
+              -20,
+              30
+            ],
+            [
+              -20,
+              10
+            ]
+          ]
+        ],
+        "neighbors": [
+          0,
+          2
+        ],
+        "sovereign": 1,
+        "enclave_hosts": [],
+        "dependencies": []
+      },
+      {
+        "id": 2,
+        "name": "Область 3",
+        "english": "Region 3",
+        "continent": "Frontier",
+        "center": [
+          30,
+          20
+        ],
+        "rings": [
+          [
+            [
+              20,
+              10
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              40,
+              30
+            ],
+            [
+              20,
+              30
+            ],
+            [
+              20,
+              10
+            ]
+          ]
+        ],
+        "neighbors": [
+          0,
+          1
+        ],
+        "sovereign": 2,
+        "enclave_hosts": [],
+        "dependencies": []
+      }
+    ],
+    "scenario": {
+      "name": "Frontier",
+      "default_home": 0,
+      "starts": {
+        "0": {
+          "coins": 500,
+          "owned": [
+            2
+          ]
+        }
+      }
+    },
+    "victory": {
+      "type": "coins",
+      "amount": 10000
+    },
+    "events": [
+      {
+        "id": "welcome",
+        "when": "start",
+        "actions": [
+          {
+            "type": "add_coins",
+            "amount": 100
+          },
+          {
+            "type": "show_message",
+            "text": "Добро пожаловать на рубеж!"
+          }
+        ]
+      },
+      {
+        "id": "research-gift",
+        "when": "research_completed",
+        "actions": [
+          {
+            "type": "add_coins",
+            "amount": 7
+          },
+          {
+            "type": "set_flag",
+            "key": "scientist",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "supply",
+        "when": "tick",
+        "conditions": {
+          "elapsed_min": 2
+        },
+        "actions": [
+          {
+            "type": "add_units",
+            "unit": "cannon",
+            "amount": 2
+          }
+        ]
+      }
+    ],
+    "translations": {
+      "en": {
+        "Пушки": "Cannons",
+        "Кузница": "Forge",
+        "Металлургия": "Metallurgy",
+        "Артиллерия": "Artillery",
+        "Добро пожаловать на рубеж!": "Welcome to the frontier!"
+      }
+    },
+    "theme": {
+      "accent": "ffd580",
+      "ocean": "18344c"
+    },
+    "panels": [
+      {
+        "id": "briefing",
+        "title": "Frontier",
+        "text": "Reach 10000 coins. Research metallurgy and artillery, then construct forges.",
+        "action": "economy"
+      }
+    ],
+    "assets": {
+      "flag:0": {
+        "mime": "image/png",
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMIf3v4PwAGrQMHLCuJyAAAAABJRU5ErkJggg=="
+      },
+      "sound:victory": {
+        "mime": "audio/wav",
+        "data": "UklGRmQGAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  }
+}

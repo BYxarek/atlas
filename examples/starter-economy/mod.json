@@ -1,0 +1,10 @@
+{
+  "api": 1,
+  "id": "starter-economy",
+  "name": "Starter Economy",
+  "version": "1.0.0",
+  "game_version": "0.3.0",
+  "description": "Start a new solo campaign with 1000 coins.",
+  "requires": [],
+  "conflicts": []
+}

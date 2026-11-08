@@ -5,11 +5,22 @@ require_once __DIR__.'/simulation.php';
 const ATLAS_GUARD = "<?php http_response_code(404); exit; __halt_compiler(); ?>\n";
 const ATLAS_COLORS = ['69dfbd','73aeef','edc16e','b697ef','f291a1','ed876a','c9dbed','a8cc6a'];
 
+function atlas_country_count(): int {
+    static $count = null;
+    return $count ??= count(atlas_mod_world()['countries']);
+}
+function atlas_start_country_count(): int {
+    static $count = null;
+    return $count ??= count(array_filter(atlas_mod_world()['atlas'],fn($c)=>!$c['enclave_hosts']));
+}
+
 function atlas_config(): array {
     $config=require __DIR__.'/config.example.php';
     if (is_file(__DIR__.'/config.php')) $config=array_replace($config,require __DIR__.'/config.php');
     foreach (['max_rooms'=>[1,16],'poll_ms'=>[750,5000],'lease_seconds'=>[10,120]] as $key=>$range)
         if (!is_int($config[$key]) || $config[$key]<$range[0] || $config[$key]>$range[1]) throw new RuntimeException('Invalid config: '.$key);
+    $fingerprint=atlas_mod_fingerprint();
+    if ($fingerprint!=='') $config['data_dir'].='/mods_'.$fingerprint;
     if (!is_dir($config['data_dir']) && !mkdir($config['data_dir'],0770,true)) throw new RuntimeException('Cannot create data directory');
     return $config;
 }
@@ -57,10 +68,12 @@ function atlas_pause(array &$room,string $message): void {
 function atlas_offline(array &$room,string $slot): void {
     if (!isset($room['players'][$slot]) || !$room['players'][$slot]['connected']) return;
     $room['players'][$slot]['connected']=false; $room['players'][$slot]['ready']=false;
+    unset($room['players'][$slot]['ping_ms'],$room['players'][$slot]['ping_at']);
     if ($room['host']===$slot) foreach ($room['players'] as $id=>$p) if (!$p['bot'] && $p['connected']) { $room['host']=$id; break; }
     atlas_pause($room,'Участник отключился. Ожидаем возвращения и готовности игроков.');
 }
 function atlas_advance(array &$room,int $now,array $config,AtlasWorld $sim): void {
+    if ($room['world'] !== null) $sim->expand_legacy_map($room['world']);
     $end=min($now,$room['time']+120);
     for ($time=$room['time']+1;$time<=$end;$time++) {
         foreach ($room['players'] as $slot=>$p)
@@ -74,14 +87,18 @@ function atlas_advance(array &$room,int $now,array $config,AtlasWorld $sim): voi
     $room['time']=$now;
 }
 function atlas_country(array $room,string $slot,int $country): bool {
-    if ($country<0 || $country>=176) return false;
-    foreach ($room['players'] as $id=>$p) if ($id!==$slot && $p['home']===$country) return false;
+    if ($country<0 || $country>=atlas_country_count()) return false;
+    static $atlas = null;
+    $atlas ??= atlas_mod_world()['atlas'];
+    if ($atlas[$country]['enclave_hosts']) return false;
+    $claimed=mr_start_territories($country);
+    foreach ($room['players'] as $id=>$p) if ($id!==$slot && array_intersect($claimed,mr_start_territories($p['home']))) return false;
     return $room['world']===null || $room['world']['owners'][$country]==='' || $room['world']['owners'][$country]===$slot;
 }
 function atlas_player(array $room,string $digest,string $name,bool $bot,int $now): array {
     $home=0;
-    while ($home<176 && !atlas_country($room,'',$home)) $home++;
-    if ($home===176) throw new DomainException('Нет свободной стартовой страны.');
+    while ($home<atlas_country_count() && !atlas_country($room,'',$home)) $home++;
+    if ($home===atlas_country_count()) throw new DomainException('Нет свободной стартовой страны.');
     $color=ATLAS_COLORS[0];
     foreach (ATLAS_COLORS as $candidate) if (!in_array($candidate,array_column($room['players'],'color'),true)) { $color=$candidate; break; }
     return ['name'=>$name,'digest'=>$digest,'peer'=>count($room['players'])+2,'bot'=>$bot,'connected'=>true,'ready'=>$bot,'home'=>$home,'color'=>$color,'seen'=>$now];
@@ -114,8 +131,8 @@ function atlas_lobby_action(array &$room,string $slot,string $action,array $args
         case 'bot':
             $count=$args[0]??1;
             $free=0;
-            for ($country=0;$country<176;$country++) if (atlas_country($room,'',$country)) $free++;
-            if ($slot!==$room['host'] || count($args)>1 || !is_int($count) || $count<1 || $count>$free || $count+count($room['players'])>176) throw new DomainException('Недостаточно свободных стран для указанного числа ботов.');
+            for ($country=0;$country<atlas_country_count();$country++) if (atlas_country($room,'',$country)) $free++;
+            if ($slot!==$room['host'] || count($args)>1 || !is_int($count) || $count<1 || $count>$free || $count+count($room['players'])>atlas_start_country_count()) throw new DomainException('Недостаточно свободных стран для указанного числа ботов.');
             for ($i=0;$i<$count;$i++) {
                 $id='bot_'.bin2hex(random_bytes(6));
                 $room['players'][$id]=atlas_player($room,'','Бот '.count($room['players']),true,$now);
@@ -147,8 +164,13 @@ function atlas_response(array &$state,string $session,array $config,AtlasWorld $
     if ($user['room']!=='' && isset($state['rooms'][$user['room']])) {
         $room=&$state['rooms'][$user['room']];
         if (!isset($room['players'][$slot])) { $user['room']=''; $reply['error']='Администратор удалил ваше место.'; return $reply; }
-        $reply['mode']=$room['stage']; $players=[];
-        foreach ($room['players'] as $id=>$p) { unset($p['digest'],$p['seen']); $players[$id]=$p; }
+        $reply['mode']=$room['stage']; $players=[]; $pings=[];
+        foreach ($room['players'] as $id=>$p) {
+            if ($room['stage']==='lobby' && !$p['bot'] && $p['connected'] && isset($p['ping_ms'],$p['ping_at']) && $room['time']-$p['ping_at']<=12)
+                $pings[$id]=$p['ping_ms'];
+            unset($p['digest'],$p['seen'],$p['ping_ms'],$p['ping_at']); $players[$id]=$p;
+        }
+        if ($room['stage']==='lobby') $reply['pings']=(object)$pings;
         $reply['lobby']=['players'=>(object)$players,'slot'=>$slot,'host'=>$room['host'],'name'=>$room['name'],'room'=>$user['room'],
             'stage'=>$room['stage'],'status'=>$room['status'],'port'=>443,'resuming'=>$room['world']!==null,
             'homes_locked'=>$room['world']===null?[]:array_keys($room['world']['factions']),
@@ -168,17 +190,23 @@ function atlas_api(array &$state,array $request,array $config,int $now): array {
     if (!is_string($action) || strlen($action)>20) throw new DomainException('Неверный запрос.');
     if ($action==='connect') {
         $token=$request['token']??''; $nonce=$request['nonce']??''; $name=$request['name']??'';
-        if (!is_string($token) || !preg_match('/^[a-f0-9]{48}$/D',$token) || !is_string($nonce) || !preg_match('/^[a-f0-9]{32}$/D',$nonce) || !is_string($name) || strlen($name)>96 || ($request['protocol']??null)!==2) throw new DomainException('Несовместимый клиент.');
+        if (!is_string($token) || !preg_match('/^[a-f0-9]{48}$/D',$token) || !is_string($nonce) || !preg_match('/^[a-f0-9]{32}$/D',$nonce) || !is_string($name) || strlen($name)>96 || ($request['protocol']??null)!==5) throw new DomainException('Несовместимый клиент.');
+        $mods=$request['mods']??[];
+        if (!is_array($mods) || !array_is_list($mods) || count($mods)>32 || count(array_unique($mods,SORT_REGULAR))!==count($mods)) throw new DomainException('Invalid mod profile');
+        foreach ($mods as $hash) if (!atlas_mod_hash($hash)) throw new DomainException('Invalid mod hash');
         $digest=hash('sha256',$token);
         foreach ($state['users'] as $id=>$user) {
             if ($now-$user['seen']>3600) { unset($state['users'][$id]); continue; }
             if ($user['digest']!==$digest) continue;
-            if ($user['nonce']===$nonce) { $reply=atlas_response($state,$id,$config,$sim); $reply['session']=$id; return $reply; }
+            if ($user['nonce']===$nonce) {
+                if ($user['room']!=='' && ($user['mods']??[])!==$mods) throw new DomainException('Leave the room before changing mods');
+                $state['users'][$id]['mods']=$mods;
+                $reply=atlas_response($state,$id,$config,$sim); $reply['session']=$id; return $reply; }
             if ($now-$user['seen']<=$config['lease_seconds']) throw new DomainException('Этот профиль уже подключён.');
         }
         if (count($state['users'])>=128) throw new DomainException('Слишком много подключений.');
         $session=bin2hex(random_bytes(32));
-        $state['users'][$session]=['digest'=>$digest,'name'=>atlas_name($name),'nonce'=>$nonce,'room'=>'','seen'=>$now,'seq'=>0,'rate_time'=>$now,'rate'=>0,'error'=>''];
+        $state['users'][$session]=['digest'=>$digest,'name'=>atlas_name($name),'nonce'=>$nonce,'room'=>'','seen'=>$now,'seq'=>0,'rate_time'=>$now,'rate'=>0,'error'=>'','mods'=>$mods];
         $reply=atlas_response($state,$session,$config,$sim); $reply['session']=$session; return $reply;
     }
     $session=$request['session']??'';
@@ -194,6 +222,10 @@ function atlas_api(array &$state,array $request,array $config,int $now): array {
     if (isset($state['rooms'][$user['room']]['players'][$slot])) {
         $player=&$state['rooms'][$user['room']]['players'][$slot]; $player['seen']=$now;
         if (!$player['connected']) { $player['connected']=true; $player['ready']=false; }
+        $ping=$request['ping_ms']??null;
+        if ($action==='poll' && $state['rooms'][$user['room']]['stage']==='lobby' && is_int($ping) && $ping>=0 && $ping<=8000) {
+            $player['ping_ms']=$ping; $player['ping_at']=$now;
+        }
         unset($player);
     }
     if ($action==='poll') return atlas_response($state,$session,$config,$sim);
@@ -202,6 +234,9 @@ function atlas_api(array &$state,array $request,array $config,int $now): array {
     if ($seq<=$user['seq']) { $reply=atlas_response($state,$session,$config,$sim); if ($seq===$user['seq'] && $user['error']!=='') $reply['error']=$user['error']; return $reply; }
     if ($seq!==$user['seq']+1) throw new DomainException('Неверная последовательность команд.');
     $user['seq']=$seq; $user['error']='';
+    if (in_array($action,['join','create'],true) && ($user['mods']??[])!==atlas_mod_hashes()) {
+        $reply=atlas_response($state,$session,$config,$sim); $reply['mod_offer']=atlas_mod_profile(); return $reply;
+    }
     try {
         if ($action==='leave') {
             if (isset($state['rooms'][$user['room']])) atlas_offline($state['rooms'][$user['room']],$slot);
@@ -228,7 +263,7 @@ function atlas_api(array &$state,array $request,array $config,int $now): array {
             } else {
                 if (in_array($user['digest'],$room['banned'],true)) throw new DomainException('Ваше место было удалено.');
                 if (!isset($room['players'][$slot])) {
-                    if (count($room['players'])>=176) throw new DomainException('Комната заполнена.');
+                    if (count($room['players'])>=atlas_start_country_count()) throw new DomainException('Комната заполнена.');
                     $room['players'][$slot]=atlas_player($room,$user['digest'],$user['name'],false,$now);
                 } else { $room['players'][$slot]['connected']=true; $room['players'][$slot]['seen']=$now; }
                 $user['room']=$id; atlas_pause($room,'Игрок подключился. Подтвердите готовность.');

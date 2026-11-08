@@ -2,6 +2,7 @@
 tools/*.exe
 tools/*.zip
 tools/countries.geojson
+tools/countries_10m.geojson
 tools/*.log
 tools/*.bin
 __pycache__/

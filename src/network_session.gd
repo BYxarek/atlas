@@ -6,9 +6,12 @@ signal discovery_changed
 signal closed(reason: String)
 signal notice(text: String)
 signal directory_changed
-const WIRE_VERSION = 8
+const WIRE_VERSION = 11
 const World = preload("res://src/network_world.gd")
-const MAX_PLAYERS = 176
+const Quality = preload("res://src/network_quality.gd")
+const PROBE_TIMEOUT_MS = 5000
+static var COUNTRY_COUNT: int = preload("res://src/game.gd").COUNTRY_COUNT
+static var MAX_PLAYERS: int = COUNTRY_COUNT - preload("res://src/game.gd").MICROSTATES.size()
 const DEFAULT_PORT = 24760
 const DISCOVERY_PORT = 24761
 const COLORS = ["69dfbd", "73aeef", "edc16e", "b697ef", "f291a1", "ed876a", "c9dbed", "a8cc6a"]
@@ -46,10 +49,23 @@ var player_name = "Игрок"
 var rate_limits: Dictionary = {}
 var discovery_limits: Dictionary = {}
 var occupied: Array = []
+var mods = preload("res://src/network_mods.gd").new()
+var quality = Quality.new()
+var player_pings: Dictionary = {}
+var player_pings_at = 0
+var quality_supported = false
+var probe_sequence = 0
+var probe_started = -1
+var next_probe = 0
+
+func _init() -> void:
+	mods.net = self
+	add_child(mods)
 
 func _ready() -> void:
 	if transport != null: return
 	name = "NetworkSession"
+	if not str(Engine.get_meta("atlas_mods", "")).is_empty(): save_directory += "/" + str(Engine.get_meta("atlas_mods"))
 	if identity_token.is_empty():
 		var config = ConfigFile.new()
 		config.load("user://network_identity.cfg")
@@ -57,7 +73,7 @@ func _ready() -> void:
 		identity_token = stored if stored is String and valid_token(stored) else Crypto.new().generate_random_bytes(24).hex_encode()
 		config.set_value("network", "token", identity_token)
 		config.save("user://network_identity.cfg")
-	multiplayer.connected_to_server.connect(func(): _hello.rpc_id(1, player_name, login_token(), directory_client, WIRE_VERSION))
+	multiplayer.connected_to_server.connect(func(): _hello.rpc_id(1, player_name, login_token(), directory_client, WIRE_VERSION, mods.hashes()))
 	multiplayer.connection_failed.connect(func(): shutdown("Не удалось подключиться к хосту."))
 	multiplayer.server_disconnected.connect(func():
 		if active: shutdown("Соединение с хостом потеряно. Хост может открыть сохранённую сетевую партию."))
@@ -88,6 +104,7 @@ func is_admin() -> bool:
 	return hosting or (not my_slot.is_empty() and my_slot == host_slot)
 
 func host_directory(game_port: int, data_path: String, max_rooms: int = 8) -> Error:
+	if not str(Engine.get_meta("atlas_mods", "")).is_empty() and not Engine.get_meta("atlas_network_mode", false): return ERR_UNAVAILABLE
 	if active or game_port < 1024 or game_port > 65535 or max_rooms < 1 or max_rooms > 32: return ERR_INVALID_PARAMETER
 	var socket = WebSocketMultiplayerPeer.new()
 	socket.inbound_buffer_size = 1048576
@@ -99,7 +116,7 @@ func host_directory(game_port: int, data_path: String, max_rooms: int = 8) -> Er
 	port = game_port
 	directory = load("res://src/vps_directory.gd").new()
 	directory.hub = self
-	directory.data_path = data_path
+	directory.data_path = data_path + ("/" + str(Engine.get_meta("atlas_mods")) if not str(Engine.get_meta("atlas_mods", "")).is_empty() else "")
 	directory.max_rooms = max_rooms
 	error = directory.restore_rooms()
 	if error != OK:
@@ -114,6 +131,8 @@ func host_directory(game_port: int, data_path: String, max_rooms: int = 8) -> Er
 	return OK
 
 func join_directory(url: String, nickname: String) -> Error:
+	mods.target = {"kind": "vps", "address": url, "name": nickname}
+	if not str(Engine.get_meta("atlas_mods", "")).is_empty() and not Engine.get_meta("atlas_network_mode", false): return ERR_UNAVAILABLE
 	var pattern = RegEx.new()
 	pattern.compile("^(wss://[A-Za-z0-9.-]+(:[0-9]{1,5})?|ws://(127\\.0\\.0\\.1|localhost)(:[0-9]{1,5})?)/?$")
 	if active or url.length() > 255 or pattern.search(url) == null: return ERR_INVALID_PARAMETER
@@ -135,7 +154,9 @@ func join_directory(url: String, nickname: String) -> Error:
 	multiplayer.multiplayer_peer = peer
 	return OK
 
-func join_php(url: String, nickname: String) -> Error:
+func join_php(url: String, nickname: String, reconnect_nonce: String = "") -> Error:
+	mods.target = {"kind": "php", "address": url, "name": nickname, "nonce": reconnect_nonce}
+	if not str(Engine.get_meta("atlas_mods", "")).is_empty() and not Engine.get_meta("atlas_network_mode", false): return ERR_UNAVAILABLE
 	var pattern = RegEx.new()
 	pattern.compile("^(https://[A-Za-z0-9.-]+(:[0-9]{1,5})?|http://(127\\.0\\.0\\.1|localhost)(:[0-9]{1,5})?)(/[A-Za-z0-9_.~-]+)*/?$")
 	if active or url.length() > 255 or pattern.search(url) == null: return ERR_INVALID_PARAMETER
@@ -154,6 +175,9 @@ func join_php(url: String, nickname: String) -> Error:
 	return OK
 
 func directory_request(action: String, args: Array = []) -> void:
+	if action in ["join", "create"]:
+		mods.target.action = action
+		mods.target.args = args.duplicate()
 	if php != null:
 		php.enqueue(action, args)
 		return
@@ -165,7 +189,16 @@ func _directory_request(action: String, args: Array) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func _directory_update(data: Dictionary) -> void:
-	if not active or not directory_client or not data.get("rooms") is Array or data.rooms.size() > 32: return
+	if not active or not directory_client: return
+	if data.has("quality_echo"):
+		if php != null or stage != "lobby" or probe_started < 0 or data.get("room") != room_id or not data.quality_echo is int or data.quality_echo != probe_sequence: return
+		var now = Time.get_ticks_msec()
+		var elapsed = now - probe_started
+		probe_started = -1
+		quality.record(elapsed if elapsed < PROBE_TIMEOUT_MS else -1, now)
+		update_player_pings(data.get("pings"))
+		return
+	if not data.get("rooms") is Array or data.rooms.size() > 32: return
 	for room in data.rooms:
 		if not room is Dictionary or not room.get("id") is String or room.id.length() != 16 or not room.id.is_valid_hex_number(): return
 		if not room.get("name") is String or room.name.length() > 40 or not room.get("stage") in ["lobby", "game"]: return
@@ -174,10 +207,46 @@ func _directory_update(data: Dictionary) -> void:
 	directory_rooms = data.rooms
 	directory_status = str(data.get("status", "")).substr(0, 200)
 	if data.get("browse", false):
+		if stage != "directory": reset_quality()
 		stage = "directory"
 		my_slot = ""
 		players = {}
 	directory_changed.emit()
+	if not mods.resume.is_empty() and stage == "directory":
+		var retry = mods.resume
+		mods.resume = {}
+		directory_request.call_deferred(str(retry.get("action", "list")), retry.get("args", []))
+
+func reset_quality() -> void:
+	quality = Quality.new()
+	player_pings.clear()
+	quality_supported = false
+	probe_started = -1
+	next_probe = 0
+
+func update_player_pings(pings: Variant) -> void:
+	player_pings.clear()
+	if stage != "lobby" or not pings is Dictionary or pings.size() > MAX_PLAYERS: return
+	player_pings_at = Time.get_ticks_msec()
+	for slot in pings:
+		if players.has(slot) and players[slot].connected and not players[slot].bot and Quality.valid_ping(pings[slot]):
+			player_pings[slot] = pings[slot]
+
+func player_ping_ms(slot: String) -> int:
+	var now = Time.get_ticks_msec()
+	if slot == my_slot: return quality.ping_ms(now)
+	return player_pings.get(slot, -1) if now - player_pings_at <= Quality.FRESH_MS else -1
+
+func poll_quality(now: int) -> void:
+	if probe_started >= 0:
+		if now - probe_started < PROBE_TIMEOUT_MS: return
+		quality.record(-1, now)
+		probe_started = -1
+	if now < next_probe or not can_send(1): return
+	probe_sequence += 1
+	probe_started = now
+	next_probe = now + 2000
+	_directory_request.rpc_id(1, "quality", [{"echo": probe_sequence, "ping_ms": quality.ping_ms(now)}])
 
 @rpc("authority", "call_remote", "reliable")
 func _directory_notice(text: String) -> void:
@@ -187,6 +256,7 @@ func valid_token(token: String) -> bool:
 	return token.length() == 48 and token.is_valid_hex_number()
 
 func host_room(title: String, nickname: String, game_port: int = DEFAULT_PORT, saved_path: String = "") -> Error:
+	if not str(Engine.get_meta("atlas_mods", "")).is_empty() and not Engine.get_meta("atlas_network_mode", false): return ERR_UNAVAILABLE
 	if active or game_port < 1024 or game_port > 65535: return ERR_INVALID_PARAMETER
 	peer = ENetMultiplayerPeer.new()
 	var error = peer.create_server(game_port, MAX_PLAYERS - 1, 2)
@@ -218,6 +288,8 @@ func host_room(title: String, nickname: String, game_port: int = DEFAULT_PORT, s
 	return OK
 
 func join_room(address: String, nickname: String, game_port: int = DEFAULT_PORT) -> Error:
+	mods.target = {"kind": "lan", "address": address, "name": nickname, "port": game_port}
+	if not str(Engine.get_meta("atlas_mods", "")).is_empty() and not Engine.get_meta("atlas_network_mode", false): return ERR_UNAVAILABLE
 	if active or address.strip_edges().is_empty() or address.length() > 255 or game_port < 1024 or game_port > 65535: return ERR_INVALID_PARAMETER
 	peer = ENetMultiplayerPeer.new()
 	var error = peer.create_client(address.strip_edges(), game_port, 2)
@@ -244,19 +316,20 @@ func make_player(nickname: String, digest: String, peer_id: int, bot: bool) -> D
 			color = candidate
 			break
 	var home = 0
-	while home < 176 and not country_available("", home): home += 1
+	while home < COUNTRY_COUNT and not country_available("", home): home += 1
 	return {"name": clean_name(nickname), "digest": digest, "peer": peer_id, "bot": bot,
-		"connected": bot or peer_id > 0, "ready": bot, "home": mini(home, 175), "color": color}
+		"connected": bot or peer_id > 0, "ready": bot, "home": mini(home, COUNTRY_COUNT - 1), "color": color}
 
 func country_available(slot: String, country: int) -> bool:
-	if country < 0 or country >= 176: return false
+	if country < 0 or country >= COUNTRY_COUNT or country in preload("res://src/game.gd").MICROSTATES: return false
+	var claimed = preload("res://src/mod_runtime.gd").start_territories(country)
 	for id in players:
-		if id != slot and players[id].home == country: return false
+		if id != slot and preload("res://src/mod_runtime.gd").start_territories(int(players[id].home)).any(func(territory): return territory in claimed): return false
 	if not hosting and active: return not country in occupied
 	return world == null or world.owners[country] == "" or world.owners[country] == slot
 
 func has_free_country() -> bool:
-	for country in 176:
+	for country in COUNTRY_COUNT:
 		if country_available("", country): return true
 	return false
 
@@ -266,13 +339,19 @@ func slot_for_peer(peer_id: int) -> String:
 	return ""
 
 @rpc("any_peer", "call_remote", "reliable")
-func _hello(nickname: String, token: String, wants_directory: bool = false, version: int = WIRE_VERSION) -> void:
+func _hello(nickname: String, token: String, wants_directory: bool = false, version: int = WIRE_VERSION, mod_hashes: Array = []) -> void:
 	var sender = multiplayer.get_remote_sender_id()
 	if directory != null:
-		directory.hello(sender, nickname, token, wants_directory, version)
+		directory.hello(sender, nickname, token, wants_directory, version, mod_hashes)
 		return
 	if not hosting or not active: return
 	if sender <= 1 or not multiplayer.get_peers().has(sender): return
+	if version != WIRE_VERSION or not valid_token(token) or not mods.hashes_valid(mod_hashes):
+		_reject_peer(sender, "Incompatible mod protocol")
+		return
+	if mod_hashes != mods.hashes():
+		mods.offer(sender)
+		return
 	accept_player(sender, nickname, token)
 
 func accept_player(sender: int, nickname: String, token: String) -> bool:
@@ -366,7 +445,7 @@ func apply_request(sender: int, action: String, args: Array) -> bool:
 			var count = args[0] if args.size() == 1 else 1
 			if slot != host_slot or args.size() > 1 or not count is int or count < 1 or count > MAX_PLAYERS - players.size(): return false
 			var free = 0
-			for country in MAX_PLAYERS:
+			for country in COUNTRY_COUNT:
 				if country_available("", country): free += 1
 			if count > free: return false
 			for i in count:
@@ -417,6 +496,8 @@ func to_lobby(reason: String) -> void:
 	broadcast_lobby()
 
 func _peer_left(id: int) -> void:
+	mods.offers.erase(id)
+	mods.last_sent.erase(id)
 	if directory != null:
 		directory.disconnected(id)
 		return
@@ -441,8 +522,9 @@ func broadcast_lobby() -> void:
 		public[slot].erase("digest")
 	var data = {"players": public, "host": host_slot, "name": lobby_name, "room": room_id, "stage": stage, "status": status,
 		"port": port, "resuming": world != null, "homes_locked": world.factions.keys() if world != null else [], "occupied": []}
+	if dedicated_room: data.quality = true
 	if world != null:
-		for i in 176:
+		for i in COUNTRY_COUNT:
 			if world.owners[i] != "": data.occupied.append(i)
 	for slot in players:
 		if players[slot].bot or not players[slot].connected: continue
@@ -462,6 +544,7 @@ func _lobby_update(data: Dictionary) -> void:
 	for slot in data.players:
 		if not valid_player(slot, data.players[slot], false): return
 	if not data.players.has(data.get("slot", "")) or not data.players.has(data.get("host", "")): return
+	if stage != data.stage or room_id != data.get("room", ""): reset_quality()
 	players = data.players
 	my_slot = data.slot
 	host_slot = data.host
@@ -469,6 +552,7 @@ func _lobby_update(data: Dictionary) -> void:
 	room_id = str(data.get("room", "")).substr(0, 16)
 	status = str(data.get("status", "")).substr(0, 200)
 	stage = data.stage
+	quality_supported = data.get("quality") == true
 	resuming = data.get("resuming", false) == true
 	homes_locked = data.get("homes_locked", []) if data.get("homes_locked") is Array else []
 	occupied = data.get("occupied", []) if data.get("occupied") is Array else []
@@ -491,7 +575,7 @@ func valid_player(slot: Variant, p: Variant, private: bool) -> bool:
 	if not slot is String or slot.length() < 1 or slot.length() > 32 or not p is Dictionary: return false
 	if not p.get("name") is String or p.name.length() > 24 or not p.get("color") in COLORS: return false
 	if not p.get("home") is int and not p.get("home") is float: return false
-	if p.home < 0 or p.home >= 176 or p.home != floorf(p.home): return false
+	if p.home < 0 or p.home >= COUNTRY_COUNT or p.home != floorf(p.home): return false
 	for key in ["bot", "connected", "ready"]:
 		if not p.get(key) is bool: return false
 	if not p.get("peer") is int and not p.get("peer") is float: return false
@@ -507,7 +591,7 @@ func save_match() -> Error:
 	var error = DirAccess.make_dir_recursive_absolute(save_directory)
 	if error != OK: return error
 	var data = {"version": 1, "room": room_id, "name": lobby_name, "host": host_slot, "players": players,
-		"world": world.export_data() if world != null else null, "dedicated": dedicated_room, "banned": banned}
+		"mods": mods.hashes(), "world": world.export_data() if world != null else null, "dedicated": dedicated_room, "banned": banned}
 	var file = FileAccess.open(save_path() + ".tmp", FileAccess.WRITE)
 	if file == null: return FileAccess.get_open_error()
 	file.store_string(JSON.stringify(data))
@@ -525,6 +609,7 @@ func restore_match(path: String) -> bool:
 	if parser.parse(FileAccess.get_file_as_string(path)) != OK: return false
 	var data = parser.data
 	if not data is Dictionary or data.get("version") != 1 or not data.get("players") is Dictionary or data.players.size() < (1 if dedicated_room else 2) or data.players.size() > MAX_PLAYERS: return false
+	if data.get("mods", []) != mods.hashes(): return false
 	if dedicated_room != (data.get("dedicated", false) == true): return false
 	if not data.get("room") is String or data.room.length() != 16 or not data.room.is_valid_hex_number() or not data.get("name") is String or data.name.length() > 40: return false
 	for slot in data.players:
@@ -599,6 +684,8 @@ func _process(delta: float) -> void:
 	if directory != null:
 		directory.tick(delta)
 		return
+	if active and directory_client and php == null and stage == "lobby" and quality_supported:
+		poll_quality(Time.get_ticks_msec())
 	if active and not hosting and stage == "connecting" and Time.get_ticks_msec() - joining_since > 12000: shutdown("Время подключения истекло. Проверьте адрес и порт.")
 	if hosting and active and stage == "game":
 		step_time += delta
@@ -657,6 +744,7 @@ func _process(delta: float) -> void:
 		if old_size != found.size(): discovery_changed.emit()
 
 func shutdown(reason: String = "Вы покинули лобби.") -> void:
+	mods.cancel()
 	if php != null:
 		php.close()
 		php.queue_free()
@@ -667,6 +755,7 @@ func shutdown(reason: String = "Вы покинули лобби.") -> void:
 	hosting = false
 	directory_client = false
 	stage = "offline"
+	reset_quality()
 	if peer != null: peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	if responder != null: responder.close()
@@ -683,3 +772,15 @@ func _exit_tree() -> void:
 	if peer != null: peer.close()
 	if responder != null: responder.close()
 	if browser != null: browser.close()
+
+@rpc("authority", "call_remote", "reliable")
+func _mod_offer(profile: Array) -> void:
+	mods.receive_offer(profile)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _mod_chunk_request(hash: String, offset: int) -> void:
+	if hosting or directory != null: mods.send_chunk(multiplayer.get_remote_sender_id(), hash, offset)
+
+@rpc("authority", "call_remote", "reliable")
+func _mod_chunk(hash: String, offset: int, bytes: PackedByteArray) -> void:
+	if active: mods.receive_chunk(hash, offset, bytes)

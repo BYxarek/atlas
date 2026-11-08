@@ -49,6 +49,7 @@ func enter_named(title: String) -> void:
 func leave_room() -> void:
 	net.directory_request("leave")
 	await until(func(): return net.stage == "directory", "Leave room")
+	check(net.player_pings.is_empty() and net.quality.failure_percent() == -1, "Leaving clears room connection stats")
 
 func start_with_bot(title: String) -> void:
 	net.directory_request("create", [title])
@@ -91,6 +92,9 @@ func admin_flow() -> void:
 	await until(func(): return marked("beta_started"), "Beta isolation fixture")
 	check(latest.game.units[0] == 45 and net.lobby_name == "Alpha", "Second room commands do not alter first room")
 	await until(func(): return net.stage == "lobby" and net.players.size() == 3, "Guest joins running match")
+	var guest = net.players.keys().filter(func(slot): return net.players[slot].name == "Guest")[0]
+	await until(func(): return net.player_ping_ms(guest) >= 0 and net.player_ping_ms(net.my_slot) >= 0, "Receive measured local and guest pings")
+	check(net.player_pings.keys().all(func(slot): return not net.players[slot].bot), "Lobby pings exclude bots")
 	check(not net.start_error().is_empty(), "New arrival resets readiness")
 	await until(func(): return net.players.values().any(func(p): return p.name == "Guest" and p.ready), "Guest ready")
 	net.request("ready", [true])

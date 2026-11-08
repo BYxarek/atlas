@@ -19,7 +19,7 @@ powershell -ExecutionPolicy Bypass -File tools/build.ps1
 
 The script downloads the pinned Windows editor and export template if absent, imports assets, checks translation coverage, runs game/UI/mobile/network/VPS/PHP tests and exports Windows, server bundles and Android. An internet connection is needed for missing tools. The Android step requires a configured SDK and JDK; see [Android](ANDROID.md). Native scripts are currently oriented toward a Windows build host.
 
-Outputs are under `build`: `windows-v0.2.0/Atlas.exe`, `Atlas-Windows-x64.zip`, `Atlas-Android.apk`, `Atlas-VPS-Source.zip` and `Atlas-PHP-Hosting.zip`.
+Outputs are under `build`: `windows-v0.3.0/Atlas.exe`, `Atlas-Windows-x64.zip`, `Atlas-Android.apk`, `Atlas-VPS-Source.zip` and `Atlas-PHP-Hosting.zip`.
 
 ## Focused checks
 

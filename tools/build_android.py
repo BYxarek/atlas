@@ -14,7 +14,7 @@ ROOT=Path(__file__).resolve().parent.parent
 def run(command,env,log=None):
     result=subprocess.run([str(x) for x in command],cwd=ROOT,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace')
     if log:Path(log).write_text(result.stdout+result.stderr,encoding='utf-8')
-    if result.returncode:
+    if result.returncode or 'ERROR:' in result.stdout + result.stderr:
         print(result.stdout,result.stderr)
         raise RuntimeError('Android build command failed')
     return result.stdout
@@ -35,6 +35,7 @@ def main():
     env=dict(os.environ,ATLAS_ANDROID_SDK=str(sdk),ATLAS_JAVA_SDK=str(jdk),JAVA_HOME=str(jdk))
     output=ROOT/'build/android'
     output.mkdir(parents=True,exist_ok=True)
+    (ROOT/'build/.gdignore').touch()
     key_dir=Path.home()/'.atlas/signing'
     key_dir.mkdir(parents=True,exist_ok=True)
     key_file=key_dir/'android-release.jks'
@@ -61,7 +62,7 @@ def main():
         if re.search('^'+re.escape(name)+r'\s*=',settings,re.M):settings=re.sub('^'+re.escape(name)+r'\s*=.*$',lambda _:line,settings,flags=re.M)
         else:settings+='\n'+line+'\n'
     settings_file.write_text(settings,encoding='utf-8')
-    apk=output/'Atlas-Android-v0.2.0.apk'
+    apk=output/'Atlas-Android-v0.3.0.apk'
     run([EDITOR,'--headless','--path',ROOT,'--export-release','Android',apk],env,output/'export.log')
     build_tools=sorted((Path(sdk)/'build-tools').iterdir(),key=lambda p:tuple(int(x) for x in p.name.split('.') if x.isdigit()))[-1]
     signer=build_tools/('apksigner.bat' if os.name=='nt' else 'apksigner')

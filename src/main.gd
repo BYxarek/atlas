@@ -8,11 +8,15 @@ const SaveStore = preload("res://src/saves.gd")
 const Sound = preload("res://src/sound.gd")
 const NetworkSession = preload("res://src/network_session.gd")
 const OnlineMenu = preload("res://src/online_menu.gd")
-const INK = Color("e4eceb")
-const MUTED = Color("82979e")
-const MINT = Color("69dfbd")
-const GOLD = Color("f0cf96")
-const RED = Color("ec9586")
+const ModMenu = preload("res://src/mod_menu.gd")
+var mod_menu = ModMenu.new()
+var mod_tools = preload("res://src/mod_tools.gd").new()
+const Media = preload("res://src/mod_media.gd")
+var INK = Media.color("ink", Color("f0f6ff"))
+var MUTED = Media.color("muted", Color("a4bdd5"))
+var MINT = Media.color("accent", Color("57edc3"))
+const GOLD = Color("ffda80")
+const RED = Color("ff938d")
 const BUSINESS_NAMES = ["Торговый квартал", "Промышленный комплекс", "Транспортный узел", "Технологический парк", "Энергетическая компания"]
 var game = Simulation.new()
 var store = SaveStore.new()
@@ -67,6 +71,9 @@ var zoom_controls: VBoxContainer
 var insets = Vector4.ZERO
 var menu_shell: PanelContainer
 var mobile_modal: Control
+var show_fps = false
+var fps_panel: PanelContainer
+var fps_label: Label
 
 func _ready() -> void:
 	if OS.has_feature("dedicated_server") or "--server" in OS.get_cmdline_user_args():
@@ -74,6 +81,8 @@ func _ready() -> void:
 		return
 	mobile = force_mobile or OS.has_feature("android") or "--mobile-preview" in OS.get_cmdline_user_args()
 	auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	mod_menu.ui = self
+	mod_tools.ui = self
 	L.setup(settings_path)
 	get_window().title = L.text("ATLAS — Мировое господство")
 	online.nickname = L.text("Игрок")
@@ -101,6 +110,7 @@ func _ready() -> void:
 	overlay = Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(overlay)
+	build_fps_panel()
 	show_main_menu()
 	var timer = Timer.new()
 	timer.wait_time = 1
@@ -115,6 +125,7 @@ func _ready() -> void:
 	add_child(network)
 	online.ui = self
 	online.net = network
+	online.setup_mods()
 	network.lobby_changed.connect(func():
 		if network.stage == "lobby": online.show_lobby())
 	network.view_received.connect(receive_network_view)
@@ -134,6 +145,7 @@ func _ready() -> void:
 		world.clear_motion()
 		show_main_menu()
 		if not reason.is_empty(): message(L.text("Сетевая игра"), reason))
+	if FileAccess.file_exists("user://mods_starting"): DirAccess.remove_absolute("user://mods_starting")
 
 func style(bg: Color, border_color: Color = Color.TRANSPARENT, radius: int = 12) -> StyleBoxFlat:
 	var box = StyleBoxFlat.new()
@@ -147,6 +159,30 @@ func style(bg: Color, border_color: Color = Color.TRANSPARENT, radius: int = 12)
 	box.content_margin_bottom = 12
 	return box
 
+func build_fps_panel() -> void:
+	fps_panel = PanelContainer.new()
+	fps_panel.name = "FpsPanel"
+	fps_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_panel.add_theme_stylebox_override("panel", style(Color("10243ddd"), Color("4b829f"), 8))
+	add_child(fps_panel)
+	fps_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	fps_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	fps_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	fps_panel.offset_right = -12
+	fps_panel.offset_bottom = -12
+	fps_label = label("", 12, INK)
+	fps_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_panel.add_child(fps_label)
+	fps_panel.hide()
+
+func update_performance_overlay() -> void:
+	var public_lobby = page == "lobby" and is_instance_valid(network) and network.active and network.directory_client
+	fps_panel.visible = show_fps and not public_lobby
+	var frame_rate = int(Engine.get_frames_per_second())
+	if fps_panel.visible: fps_label.text = "FPS %d" % frame_rate
+	if public_lobby: online.update_telemetry(frame_rate if show_fps else -1)
+
 func build_theme() -> void:
 	var t = Theme.new()
 	t.set_sound("pressed_sound", "BaseButton", sound.streams.click)
@@ -155,24 +191,24 @@ func build_theme() -> void:
 	t.default_font_size = 17 if mobile else 14
 	t.set_color("font_color", "Label", INK)
 	t.set_color("font_color", "Button", INK)
-	t.set_color("font_disabled_color", "Button", Color("53666e"))
+	t.set_color("font_disabled_color", "Button", Color("71859e"))
 	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
-		var bg = Color("1b2c36")
-		if state == "hover": bg = Color("29444a")
-		if state == "pressed": bg = Color("31534f")
-		if state == "disabled": bg = Color("14212a")
+		var bg = Color("22466b")
+		if state == "hover": bg = Color("30618a")
+		if state == "pressed": bg = Color("236f79")
+		if state == "disabled": bg = Color("1a2c43")
 		if state == "focus": bg = Color.TRANSPARENT
-		t.set_stylebox(state, "Button", style(bg, MINT if state == "focus" else Color("2a404a"), 8))
+		t.set_stylebox(state, "Button", style(bg, MINT if state == "focus" else Color("43769c"), 8))
 	for control in ["LineEdit", "ItemList", "OptionButton"]:
 		t.set_color("font_color", control, INK)
-		t.set_stylebox("normal" if control != "ItemList" else "panel", control, style(Color("10202a"), Color("2a3d47"), 8))
+		t.set_stylebox("normal" if control != "ItemList" else "panel", control, style(Color("142c49"), Color("3a6084"), 8))
 	t.set_color("font_placeholder_color", "LineEdit", MUTED)
-	t.set_stylebox("focus", "LineEdit", style(Color("10202a"), MINT, 8))
-	t.set_stylebox("selected", "ItemList", style(Color("2b4947")))
-	t.set_stylebox("selected_focus", "ItemList", style(Color("2b4947")))
+	t.set_stylebox("focus", "LineEdit", style(Color("142c49"), MINT, 8))
+	t.set_stylebox("selected", "ItemList", style(Color("236b78")))
+	t.set_stylebox("selected_focus", "ItemList", style(Color("236b78")))
 	t.set_constant("v_separation", "ItemList", 28 if mobile else 12)
 	t.set_color("font_color", "ItemList", INK)
-	for entry in [["background", Color("20313a")], ["fill", MINT]]:
+	for entry in [["background", Color("284968")], ["fill", MINT]]:
 		var thin = style(entry[1], Color.TRANSPARENT, 3)
 		thin.set_content_margin_all(0)
 		t.set_stylebox(entry[0], "ProgressBar", thin)
@@ -228,7 +264,7 @@ func info(parent: Node, caption: String, value: String, color: Color = INK) -> v
 
 func box_panel(parent: Node) -> VBoxContainer:
 	var shell = PanelContainer.new()
-	shell.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if mobile else style(Color("142832"), Color("2a4049")))
+	shell.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if mobile else style(Color("193b59"), Color("3c6c8f")))
 	parent.add_child(shell)
 	var box = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
@@ -242,7 +278,7 @@ func build_hud() -> void:
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	treasury = PanelContainer.new()
 	treasury.position = Vector2(24, 22)
-	treasury.add_theme_stylebox_override("panel", style(Color("101f2beb"), Color("30434d")))
+	treasury.add_theme_stylebox_override("panel", style(Color("153452f5"), Color("4d8dac")))
 	hud.add_child(treasury)
 	var money_row = HBoxContainer.new()
 	money_row.add_theme_constant_override("separation", 10 if mobile else 22)
@@ -274,7 +310,7 @@ func build_hud() -> void:
 	notifications_button = button(L.text("◉  Уведомления"), func(): open_card("notifications"))
 	toolbar.add_child(notifications_button)
 	threat_panel = PanelContainer.new()
-	threat_panel.add_theme_stylebox_override("panel", style(Color("29232aed"), Color("80694a")))
+	threat_panel.add_theme_stylebox_override("panel", style(Color("4c2e3af5"), Color("d79c58")))
 	hud.add_child(threat_panel)
 	threat_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	threat_panel.offset_left = -364
@@ -291,7 +327,7 @@ func build_hud() -> void:
 	threat_box.add_child(threat_identity)
 	threat_panel.hide()
 	toast_panel = PanelContainer.new()
-	toast_panel.add_theme_stylebox_override("panel", style(Color("152732f5"), Color("49616c"), 10))
+	toast_panel.add_theme_stylebox_override("panel", style(Color("1b405ef5"), Color("62b9c9"), 10))
 	toast_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(toast_panel)
 	toast_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
@@ -314,7 +350,7 @@ func build_hud() -> void:
 
 func build_card() -> void:
 	card = PanelContainer.new()
-	card.add_theme_stylebox_override("panel", style(Color("10212bf5"), Color("38515b")))
+	card.add_theme_stylebox_override("panel", style(Color("172f4ff5"), Color("4b829f")))
 	add_child(card)
 	card.anchor_left = 1
 	card.anchor_right = 1
@@ -341,12 +377,12 @@ func menu_frame(title: String, subtitle: String, width: int = 500, height: int =
 	hud.hide()
 	card.hide()
 	var dim = ColorRect.new()
-	dim.color = Color(0.025, 0.055, 0.08, 0.8)
+	dim.color = Color(0.035, 0.08, 0.16, 0.65)
 	overlay.add_child(dim)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var shell = PanelContainer.new()
 	menu_shell = shell
-	shell.add_theme_stylebox_override("panel", style(Color("10212bf5"), Color("35505b"), 18))
+	shell.add_theme_stylebox_override("panel", style(Color("172f4ff5"), Color("497b9c"), 18))
 	overlay.add_child(shell)
 	shell.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	shell.offset_left = -width / 2.0
@@ -386,6 +422,17 @@ func menu_frame(title: String, subtitle: String, width: int = 500, height: int =
 		call_deferred("adapt_inputs", menu_body)
 		if changed_page: animate_page(shell)
 
+func menu_scroll() -> void:
+	var scroll = ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	menu_body.add_child(scroll)
+	menu_body = VBoxContainer.new()
+	menu_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	menu_body.add_theme_constant_override("separation", 14)
+	scroll.add_child(menu_body)
+
 func animate_page(target: Control) -> void:
 	if not mobile: return
 	var previous: Tween = target.get_meta("page_tween") if target.has_meta("page_tween") else null
@@ -416,11 +463,16 @@ func show_main_menu() -> void:
 	menu_body.add_child(resume)
 	menu_body.add_child(button(L.text("Новая игра"), show_new_game))
 	menu_body.add_child(button(L.text("Сетевая игра · PvP + боты"), func():
-		if autosave(): online.show_browser()))
+		if not str(Engine.get_meta("atlas_mods", "")).is_empty() and not Engine.get_meta("atlas_network_mode", false):
+			message(L.text("Моды"), L.text("Выключите моды и перезапустите игру для сетевой игры."))
+		elif autosave(): online.show_browser()))
 	menu_body.add_child(button(L.text("Сохранения · %d") % saves_list.size(), func(): show_saves("menu")))
 	menu_body.add_child(button(L.text("Настройки"), func(): show_settings("menu")))
+	menu_body.add_child(button(L.text("Моды"), mod_menu.show_menu))
+	if Engine.has_meta("atlas_mod_error"):
+		menu_body.add_child(paragraph(str(Engine.get_meta("atlas_mod_error")), RED, 12))
 	menu_body.add_child(button(L.text("Выйти"), request_exit))
-	menu_body.add_child(paragraph(L.text("Нативная 2D-стратегия · %s · v0.2.0") % ("Android" if mobile else "Windows"), MUTED, 11))
+	menu_body.add_child(paragraph(L.text("Нативная 2D-стратегия · %s · v0.3.0") % ("Android" if mobile else "Windows"), MUTED, 11))
 	if mobile:
 		for action in menu_body.get_children():
 			if action is Button:
@@ -453,6 +505,28 @@ func show_settings(origin: String = "menu") -> void:
 	if mobile:
 		fullscreen_toggle.hide()
 		menu_body.add_child(paragraph(L.text("Касание выбирает страну. Перетаскивание двигает карту, два пальца меняют масштаб. Назад закрывает панель или открывает меню.")))
+	var map_toggle = CheckButton.new()
+	map_toggle.name = "MapViewToggle"
+	map_toggle.text = L.text("Объёмная карта (2.5D)")
+	map_toggle.custom_minimum_size.y = 52
+	map_toggle.button_pressed = world.tilted
+	map_toggle.toggled.connect(set_map_view)
+	menu_body.add_child(map_toggle)
+	var fps_toggle = CheckButton.new()
+	fps_toggle.name = "FpsToggle"
+	fps_toggle.text = L.text("Показывать FPS")
+	fps_toggle.custom_minimum_size.y = 52
+	fps_toggle.button_pressed = show_fps
+	fps_toggle.toggled.connect(set_fps_counter)
+	menu_body.add_child(fps_toggle)
+	if not mobile:
+		var quality_toggle = CheckButton.new()
+		quality_toggle.name = "MapQualityToggle"
+		quality_toggle.text = L.text("Высокое качество 2.5D")
+		quality_toggle.custom_minimum_size.y = 52
+		quality_toggle.button_pressed = world.detailed_map
+		quality_toggle.toggled.connect(set_map_quality)
+		menu_body.add_child(quality_toggle)
 	master_slider = volume_control(L.text("Общая громкость"), sound.master_volume)
 	effects_slider = volume_control(L.text("Громкость эффектов"), sound.effects_volume)
 	master_slider.value_changed.connect(func(value): sound.set_mix(value / 100.0, sound.effects_volume); save_audio_settings())
@@ -508,7 +582,7 @@ func change_language(language: String) -> void:
 	move_child(hud, world.get_index() + 1)
 	responsive_layout()
 	show_settings(settings_origin)
-	world.queue_redraw()
+	world.refresh_map()
 
 func responsive_layout() -> void:
 	if not mobile or not is_instance_valid(hud): return
@@ -551,6 +625,8 @@ func responsive_layout() -> void:
 		zoom_controls.position = Vector2(insets.x + 10, size.y - insets.w - 260)
 		zoom_controls.size.x = 56
 		zoom_controls.visible = page == "game" and not card.visible
+	fps_panel.offset_right = -insets.z - 10
+	fps_panel.offset_bottom = -insets.w - 90
 	apply_card_layout()
 	if is_instance_valid(menu_shell) and overlay.visible:
 		menu_shell.offset_left = insets.x
@@ -602,9 +678,25 @@ func apply_fullscreen(enabled: bool) -> void:
 
 func set_fullscreen(enabled: bool) -> void:
 	apply_fullscreen(enabled)
+	save_display_option("borderless_fullscreen", enabled)
+
+func set_map_view(enabled: bool) -> void:
+	world.set_tilted(enabled)
+	save_display_option("tilted_map", enabled)
+
+func set_map_quality(enabled: bool) -> void:
+	world.set_detailed_map(enabled)
+	save_display_option("detailed_map", enabled)
+
+func set_fps_counter(enabled: bool) -> void:
+	show_fps = enabled
+	update_performance_overlay()
+	save_display_option("show_fps", enabled)
+
+func save_display_option(key: String, enabled: bool) -> void:
 	var config = ConfigFile.new()
 	config.load(settings_path)
-	config.set_value("display", "borderless_fullscreen", enabled)
+	config.set_value("display", key, enabled)
 	var error = config.save(settings_path)
 	if error != OK: message(L.text("Настройки"), L.text("Не удалось сохранить режим экрана: ") + error_string(error))
 
@@ -613,6 +705,12 @@ func restore_display_settings() -> void:
 	if config.load(settings_path) != OK: return
 	var enabled = config.get_value("display", "borderless_fullscreen", false)
 	if enabled is bool: apply_fullscreen(enabled)
+	var tilted = config.get_value("display", "tilted_map", false)
+	var detailed = config.get_value("display", "detailed_map", false)
+	if not mobile and detailed is bool: world.set_detailed_map(detailed)
+	if tilted is bool: world.set_tilted(tilted)
+	show_fps = config.get_value("display", "show_fps", false) == true
+	update_performance_overlay()
 	var master = config.get_value("audio", "master", 0.8)
 	var effects = config.get_value("audio", "effects", 0.75)
 	if not (master is float or master is int) or not is_finite(float(master)) or master < 0 or master > 1: master = 0.8
@@ -650,7 +748,10 @@ func show_new_game() -> void:
 	color_picker.tooltip_text = L.text("Свой цвет")
 	color_picker.color_changed.connect(func(color): campaign_color = color)
 	palette.add_child(color_picker)
-	menu_body.add_child(paragraph(L.text("Во всех стартовых странах одинаковые минимальные войска и 180 монет. В каждой стране 1–5 предприятий. Нейтральные армии основаны на рейтинге GFP 2026.")))
+	if not Engine.get_meta("atlas_mods", "").is_empty():
+		menu_body.add_child(paragraph(L.text("Стартовые ресурсы, гарнизоны и условия победы задаются правилами текущего набора модов.")))
+	else:
+		menu_body.add_child(paragraph(L.text("Во всех стартовых странах одинаковые минимальные войска и 180 монет. В каждой стране 1–5 предприятий. Нейтральные армии основаны на рейтинге GFP 2026.")))
 	menu_body.add_child(paragraph(L.text("Пока у вас одна страна, нападения запрещены. После расширения ожидайте предупреждения за 1–5 игровых минут до возможной атаки.")))
 	var start = button(L.text("Начать кампанию  →"), begin_campaign, true)
 	menu_body.add_child(start)
@@ -661,13 +762,14 @@ func fill_new_countries(query: String) -> void:
 	country_picker.clear()
 	new_country_ids.clear()
 	for c in matching_countries(query):
+		if int(c.id) in Simulation.MICROSTATES: continue
 		country_picker.add_item(L.country(c))
 		new_country_ids.append(int(c.id))
-		if query.strip_edges().is_empty() and c.english == "Russia":
+		if query.strip_edges().is_empty() and (int(c.id) == int(Simulation.Runtime.content().get("scenario", {}).get("default_home", -1)) or (not Simulation.Runtime.content().get("scenario", {}).has("default_home") and c.english == "Russia")):
 			country_picker.select(new_country_ids.size() - 1)
 
 func matching_countries(query: String) -> Array:
-	var countries = game.atlas.duplicate()
+	var countries = game.atlas.filter(func(c): return game.country_visible(int(c.id)))
 	countries.sort_custom(func(a, b): return L.country(a).naturalnocasecmp_to(L.country(b)) < 0)
 	query = query.strip_edges()
 	if query.is_empty(): return countries
@@ -706,7 +808,7 @@ func enter_game() -> void:
 	card.hide()
 	card_view = ""
 	refresh_hud()
-	world.queue_redraw()
+	world.refresh_map()
 	responsive_layout()
 	if game.finished:
 		sound.play("campaign_win" if game.owned_count() > 0 else "campaign_lose")
@@ -781,7 +883,7 @@ func show_pause() -> void:
 	info(menu_body, L.text("Время кампании"), time_text(game.elapsed))
 	info(menu_body, L.text("Победы / поражения"), "%d / %d" % [game.victories, game.defeats])
 	info(menu_body, L.text("Первичные захваты / ядерные удары"), "%d / %d" % [game.conquests.size(), game.nukes])
-	for i in 3:
+	for i in Simulation.UNIT_COUNT:
 		info(menu_body, L.text(Simulation.UNIT_NAMES[i]), L.text("%d ед.  ·  ур. %d") % [game.units[i], game.levels[i]])
 	if not game.finished:
 		menu_body.add_child(button(L.text("Продолжить") if mobile else L.text("Продолжить  ·  Esc"), enter_game, true))
@@ -819,7 +921,7 @@ func select_country(id: int) -> void:
 		world.focus_country(id)
 		world.pan.y += insets.y + 180 - world.screen_point(id).y
 		world.clamp_pan()
-	world.queue_redraw()
+	world.refresh_map()
 	open_card("country")
 
 func open_card(view: String) -> void:
@@ -857,7 +959,9 @@ func refresh_card() -> void:
 	match card_view:
 		"country": build_country()
 		"economy": build_economy()
-		"army": build_army()
+		"army":
+			build_army()
+			build_mod_panels()
 		"countries": build_countries()
 		"arsenal": build_arsenal()
 		"notifications": build_notifications()
@@ -871,14 +975,31 @@ func action_button(parent: Node, text: String, action: Callable, enabled: Callab
 
 func build_country() -> void:
 	var c = game.countries[selected]
+	var country = game.atlas[selected]
+	var flag = Media.flag(selected)
+	if flag != null:
+		var image = TextureRect.new()
+		image.texture = flag
+		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		image.custom_minimum_size = Vector2(96, 56)
+		card_body.add_child(image)
+	var sovereign = int(country.sovereign)
 	if selected in game.wars and not c.owned:
 		card_body.add_child(paragraph(L.text("⚔  В состоянии войны"), RED, 13))
 	if game.rebel_country(selected):
 		card_body.add_child(paragraph(L.text("Повстанцы: снижают оборону на 1–10%. Проверка возврата прежнему владельцу — каждые 2–7 минут."), GOLD, 12))
-	card_body.add_child(paragraph(L.text("●  ВАША ТЕРРИТОРИЯ") if c.owned else ("●  " + str(game.country_owners.get(str(selected), L.text("НЕЗАВИСИМАЯ СТРАНА")))), game.player_color if c.owned else GOLD, 11))
+	var status = L.text("●  ЗАВИСИМАЯ ТЕРРИТОРИЯ") if sovereign != selected else "●  " + L.text("НЕЗАВИСИМАЯ СТРАНА")
+	if game.country_owners.has(str(selected)): status = "●  " + str(game.country_owners[str(selected)])
+	card_body.add_child(paragraph(L.text("●  ВАША ТЕРРИТОРИЯ") if c.owned else status, game.player_color if c.owned else GOLD, 11))
+	if sovereign != selected:
+		card_body.add_child(paragraph(L.text("Главная страна") + ": " + L.country(game.atlas[sovereign]), MINT, 12))
+	if not country.dependencies.is_empty():
+		card_body.add_child(paragraph(L.text("Зависимые территории") + ": " + ", ".join(country.dependencies.map(func(id): return L.country(game.atlas[int(id)]))), MUTED, 12))
 	if c.owned:
 		var revenue = 0
 		for level in c.businesses: revenue += int(level)
+		for item in Simulation.Runtime.content().get("buildings", []): revenue += int(item.income) * int(c.get("structures", {}).get(item.id, 0))
 		info(card_body, L.text("Бизнесы"), str(c.businesses.size()))
 		info(card_body, L.text("Доход страны"), L.text("+%d / сек") % revenue, MINT)
 		card_body.add_child(button(L.text("Управлять бизнесами  →"), func(): open_card("economy"), true))
@@ -892,7 +1013,7 @@ func build_country() -> void:
 			card_body.add_child(paragraph(L.text("Силы противника неизвестны. Разведайте страну перед наступлением.")))
 		else:
 			card_body.add_child(label(L.text("РАЗВЕДДАННЫЕ  ·  ") + time_text(report.time), 11, MINT))
-			for i in 3: info(card_body, L.text(Simulation.UNIT_NAMES[i]), str(int(report.units[i])))
+			for i in Simulation.UNIT_COUNT: info(card_body, L.text(Simulation.UNIT_NAMES[i]), str(int(report.units[i])))
 			info(card_body, L.text("Сила по разведке"), str(int(game.power(report.units))), GOLD)
 			card_body.add_child(paragraph(L.text("Снимок на момент отчёта. Противник может усиливаться."), MUTED, 11))
 		info(card_body, L.text("Сила вашей операции"), str(int(game.power(game.units, game.levels) * (1.0 if game.border(selected) else Simulation.B.naval_multiplier))), MINT)
@@ -923,17 +1044,20 @@ func build_economy() -> void:
 				world.pulses.append({"kind": "victory", "target": selected, "age": 0.0})
 				refresh_card(), func(): return game.can_act() and game.coins >= cost)
 
+	build_mod_buildings()
+
 func build_army() -> void:
 	info(card_body, L.text("Боевая сила"), str(int(game.power(game.units, game.levels))), MINT)
 	card_body.add_child(paragraph(L.text("Армия общая: технологии усиливают наступление и оборону. +%d%% базовой силы за уровень.") % roundi(Simulation.B.technology_bonus * 100)))
-	for i in 3:
+	for i in Simulation.UNIT_COUNT:
 		var box = box_panel(card_body)
 		info(box, L.text(Simulation.UNIT_NAMES[i]), L.text("%d ед. · ур. %d") % [game.units[i], game.levels[i]])
 		action_button(box, L.text("+%d ед. · %d монет") % [int(Simulation.B.recruit_units[i]), Simulation.UNIT_COST[i]], func():
-			if perform("recruit", [i]): refresh_card(), func(): return game.can_act() and game.coins >= Simulation.UNIT_COST[i], true)
+			if perform("recruit", [i]): refresh_card(), func(): return game.can_act() and game.coins >= Simulation.UNIT_COST[i] and Simulation.Runtime.unit_available(game, i), true)
 		var cost = game.upgrade_cost(i)
 		action_button(box, L.text("Технология · %d монет") % cost, func():
-			if perform("upgrade", [i]): refresh_card(), func(): return game.can_act() and game.coins >= cost)
+			if perform("upgrade", [i]): refresh_card(), func(): return game.can_act() and game.coins >= cost and Simulation.Runtime.unit_available(game, i))
+	build_mod_research()
 	card_body.add_child(paragraph(L.text("Сила единицы: пехота %d, авиация %d, флот %d. Десант требует %d кораблей и имеет штраф силы %d%%.") % [Simulation.B.unit_weight[0], Simulation.B.unit_weight[1], Simulation.B.unit_weight[2], Simulation.B.naval_ships, roundi((1.0 - Simulation.B.naval_multiplier) * 100)], MUTED, 12))
 
 func build_countries() -> void:
@@ -955,7 +1079,9 @@ func refresh_country_list(query: String) -> void:
 	list_ids.clear()
 	for c in matching_countries(query):
 		list_ids.append(int(c.id))
-		country_list.add_item(("●  " if game.countries[int(c.id)].owned else "    ") + L.country(c))
+		country_list.add_item(("●  " if game.countries[int(c.id)].owned else ("↳  " if int(c.sovereign) != int(c.id) else "    ")) + L.country(c))
+		if int(c.sovereign) != int(c.id):
+			country_list.set_item_tooltip(list_ids.size() - 1, L.text("Главная страна") + ": " + L.country(game.atlas[int(c.sovereign)]))
 		if game.countries[int(c.id)].owned:
 			country_list.set_item_custom_fg_color(list_ids.size() - 1, game.player_color)
 
@@ -1072,7 +1198,7 @@ func show_mobile_dialog(title: String, text: String, action: Callable, confirmat
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var panel = PanelContainer.new()
 	panel.custom_minimum_size.x = minf(480, size.x - 32)
-	panel.add_theme_stylebox_override("panel", style(Color("10212b"), MINT, 12))
+	panel.add_theme_stylebox_override("panel", style(Color("172f4f"), MINT, 12))
 	center.add_child(panel)
 	var scroll = ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(minf(448, size.x - 64), minf(340, size.y - 96))
@@ -1140,11 +1266,13 @@ func _process(_delta: float) -> void:
 		else: toast_tween.pause()
 
 func on_second() -> void:
+	update_performance_overlay()
 	if network.active: return
 	var changed = game.tick()
 	refresh_hud()
 	if changed:
-		world.queue_redraw()
+		world.sync_ownership()
+		world.refresh_map()
 		if card_view != "countries": refresh_card()
 		if not game.events.is_empty() and game.events[0].text != last_event:
 			last_event = game.events[0].text
@@ -1184,6 +1312,8 @@ func manual_save() -> void:
 func perform(action: String, args: Array) -> bool:
 	if network.active: return network.request(action, args)
 	match action:
+		"construct": return Simulation.Runtime.construct(game, args[0], args[1])
+		"research": return Simulation.Runtime.research(game, args[0])
 		"recruit": return game.recruit(args[0])
 		"upgrade": return game.upgrade_army(args[0])
 		"business": return game.upgrade_business(args[0], args[1])
@@ -1195,16 +1325,16 @@ func perform(action: String, args: Array) -> bool:
 func receive_network_view(data: Dictionary) -> void:
 	if not network.active or network.stage != "game": return
 	if not data.get("colors") is Dictionary or not data.get("names") is Dictionary or not data.get("remote") is Array or not data.get("sounds") is Array or not data.get("effects") is Array: return
-	if data.colors.size() > 176 or data.names.size() > 176 or data.remote.size() > 350 or data.sounds.size() > 40 or data.effects.size() > 40: return
+	if data.colors.size() > Simulation.COUNTRY_COUNT or data.names.size() > Simulation.COUNTRY_COUNT or data.remote.size() > Simulation.COUNTRY_COUNT * 2 or data.sounds.size() > 40 or data.effects.size() > 40: return
 	for key in data.colors:
-		if not key is String or not key.is_valid_int() or int(key) < 0 or int(key) >= 176 or not data.colors[key] in network.COLORS: return
+		if not key is String or not key.is_valid_int() or int(key) < 0 or int(key) >= Simulation.COUNTRY_COUNT or not data.colors[key] in network.COLORS: return
 	for key in data.names:
-		if not key is String or not key.is_valid_int() or int(key) < 0 or int(key) >= 176 or not data.names[key] is String or data.names[key].length() > 24: return
+		if not key is String or not key.is_valid_int() or int(key) < 0 or int(key) >= Simulation.COUNTRY_COUNT or not data.names[key] is String or data.names[key].length() > 24: return
 	for op in data.remote:
 		if not op is Dictionary or not op.get("kind") in ["enemy", "nuke"] or not game.valid_numbers([op.get("from"), op.get("target"), op.get("start"), op.get("arrival")], 4): return
-		if op.from >= 176 or op.target >= 176 or op.arrival <= op.start or not op.get("source_color") in network.COLORS or not op.get("overseas", false) is bool: return
+		if op.from >= Simulation.COUNTRY_COUNT or op.target >= Simulation.COUNTRY_COUNT or op.arrival <= op.start or not op.get("source_color") in network.COLORS or not op.get("overseas", false) is bool: return
 	for effect in data.effects:
-		if not effect is Dictionary or not effect.get("kind") in ["victory", "defeat", "nuke"] or not game.valid_numbers([effect.get("target")], 1) or effect.target >= 176: return
+		if not effect is Dictionary or not effect.get("kind") in ["victory", "defeat", "nuke"] or not game.valid_numbers([effect.get("target")], 1) or effect.target >= Simulation.COUNTRY_COUNT: return
 	if not game.restore_data(data.get("game"), false):
 		network.shutdown(L.text("Получено несовместимое состояние партии."))
 		return
@@ -1216,10 +1346,11 @@ func receive_network_view(data: Dictionary) -> void:
 	if page in ["lobby", "online", "connecting"]:
 		world.clear_motion()
 		enter_game()
+	world.sync_ownership()
 	game.paused = page != "game"
 	for cue in data.sounds:
 		if cue is String and sound.streams.has(cue): sound.play(cue)
-	world.queue_redraw()
+	world.refresh_map()
 	refresh_hud()
 	if card_view != "countries": refresh_card()
 	if not game.events.is_empty() and game.events[0].text != last_event:
@@ -1234,7 +1365,7 @@ func show_network_pause() -> void:
 	info(menu_body, L.text("Территории"), str(game.owned_count()))
 	info(menu_body, L.text("Казна / доход"), L.text("%d / +%d в сек") % [game.coins, game.income()], GOLD)
 	info(menu_body, L.text("Время матча"), time_text(game.elapsed))
-	for i in 3: info(menu_body, L.text(Simulation.UNIT_NAMES[i]), L.text("%d · ур. %d") % [game.units[i], game.levels[i]])
+	for i in Simulation.UNIT_COUNT: info(menu_body, L.text(Simulation.UNIT_NAMES[i]), L.text("%d · ур. %d") % [game.units[i], game.levels[i]])
 	menu_body.add_child(button(L.text("Вернуться к карте"), enter_game, true))
 	menu_body.add_child(button(L.text("Вернуться всем в лобби · пауза"), func(): network.request("lobby")))
 	if network.hosting:
@@ -1277,8 +1408,9 @@ func _input(event: InputEvent) -> void:
 				if not game.finished: enter_game()
 			"journal": show_pause()
 			"saves": show_pause() if save_origin == "pause" else show_main_menu()
-			"new": show_main_menu()
+			"new", "mods", "mod_tools": show_main_menu()
 			"settings": close_settings()
+			"mods_download": network.shutdown("")
 			"online":
 				if network.active: network.shutdown("")
 				else:
@@ -1319,9 +1451,9 @@ func mobile_back() -> void:
 			if not game.finished: enter_game()
 		"settings": close_settings()
 		"journal": show_pause()
-		"new": show_main_menu()
+		"new", "mods", "mod_tools": show_main_menu()
 		"saves": show_pause() if save_origin == "pause" else show_main_menu()
-		"online", "connecting":
+		"online", "connecting", "mods_download":
 			if network.active: network.shutdown("")
 			else: network.stop_scan(); show_main_menu()
 		"lobby": leave_network()
@@ -1332,4 +1464,32 @@ func close_card() -> void:
 	card_view = ""
 	if mobile and selected >= 0: world.focus_country(selected)
 	world.selected = -1
-	world.queue_redraw()
+	world.refresh_map()
+
+func build_mod_buildings() -> void:
+	var definitions = Simulation.Runtime.content().get("buildings", [])
+	for i in definitions.size():
+		var item = definitions[i]
+		var level = int(game.countries[selected].get("structures", {}).get(item.id, 0))
+		var box = box_panel(card_body)
+		info(box, L.render(item.name), "%d · +%d/s" % [level, level * int(item.income)])
+		var cost = int(item.cost) * (level + 1)
+		action_button(box, L.text("Построить · %d монет") % cost, func():
+			if perform("construct", [selected, i]): refresh_card(), func(): return game.can_act() and game.coins >= cost and Simulation.Runtime.requirements(game, item.get("requires", [])))
+
+func build_mod_research() -> void:
+	var definitions = Simulation.Runtime.content().get("technologies", [])
+	for i in definitions.size():
+		var item = definitions[i]
+		var box = box_panel(card_body)
+		info(box, L.render(item.name), "✓" if item.id in game.mod_state.get("researches", []) else str(int(item.cost)))
+		action_button(box, L.text("Исследовать · %d монет") % int(item.cost), func():
+			if perform("research", [i]): refresh_card(), func(): return game.can_act() and game.coins >= item.cost and not item.id in game.mod_state.get("researches", []) and Simulation.Runtime.requirements(game, item.get("requires", [])))
+
+func build_mod_panels() -> void:
+	for panel in Simulation.Runtime.content().get("panels", []):
+		var box = box_panel(card_body)
+		box.add_child(label(L.render(panel.title), 16, MINT))
+		box.add_child(paragraph(L.render(panel.get("text", ""))))
+		var action = str(panel.get("action", ""))
+		if not action.is_empty(): box.add_child(button(L.text("Открыть"), func(): open_card(action)))

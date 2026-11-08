@@ -3,10 +3,16 @@ extends RefCounted
 const L = preload("res://src/i18n.gd")
 ## All simulation state is separate from the scene and can be tested headlessly.
 signal sound_requested(cue: String)
+signal units_recruited(kind: int, amount: int)
 
+static var COUNTRY_COUNT: int = JSON.parse_string(FileAccess.get_file_as_string("res://assets/world.json")).size()
+const LEGACY_COUNTRY_COUNT = 176
+static var MICROSTATES: Array = JSON.parse_string(FileAccess.get_file_as_string("res://assets/world.json")).filter(func(c): return not c.enclave_hosts.is_empty()).map(func(c): return int(c.id))
 const SAVE_PATH = "user://campaign.json"
-const UNIT_NAMES = ["Пехота", "Авиация", "Флот"]
+const Runtime = preload("res://src/mod_runtime.gd")
+static var UNIT_NAMES: Array = ["Пехота", "Авиация", "Флот"] + Runtime.content().get("units", []).map(func(unit): return unit.name)
 static var B: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/balance.json"))
+static var UNIT_COUNT: int = B.unit_cost.size()
 static var UNIT_COST = B.unit_cost
 static var UNIT_WEIGHT = B.unit_weight
 static var NUCLEAR_THRESHOLD: int = int(B.nuclear_threshold)
@@ -18,8 +24,8 @@ var countries: Array = []
 var home = -1
 var coins = 180.0
 var elapsed = 0
-var units: Array = [35, 8, 4]
-var levels: Array = [1, 1, 1]
+var units: Array = START_UNITS.duplicate()
+var levels: Array = base_levels()
 var mission: Dictionary = {}
 var reports: Dictionary = {}
 var events: Array = []
@@ -39,15 +45,19 @@ var notifications_seen = 0
 var rng = RandomNumberGenerator.new()
 var network_game = false
 var enemy_levels: Dictionary = {}
+var enemy_bonuses: Dictionary = {}
 var country_colors: Dictionary = {}
 var country_owners: Dictionary = {}
 var remote_operations: Array = []
 var wars: Array = []
 var rebel_bonus = 1
 var battles: Array = []
+var mod_state: Dictionary = {}
+var allied_countries: Array = []
 
 func _init() -> void:
 	atlas = JSON.parse_string(FileAccess.get_file_as_string("res://assets/world.json"))
+	assert(atlas.size() == COUNTRY_COUNT)
 	military = JSON.parse_string(FileAccess.get_file_as_string("res://assets/military.json"))
 	rng.randomize()
 	reset()
@@ -55,25 +65,28 @@ func _init() -> void:
 func reset() -> void:
 	network_game = false
 	enemy_levels = {}
+	enemy_bonuses = {}
 	country_colors = {}
 	country_owners = {}
 	remote_operations = []
 	wars = []
 	battles = []
+	mod_state = {}
+	allied_countries = []
 	countries.clear()
 	for i in atlas.size():
 		var local_rng = RandomNumberGenerator.new()
 		local_rng.seed = i * 319 + 71
 		var businesses: Array = []
-		for j in local_rng.randi_range(1, 5):
+		for j in (1 if Runtime.content().has("map") else local_rng.randi_range(1, 5)):
 			businesses.append(1)
 		countries.append({"owned": false, "businesses": businesses,
 			"units": military.armies[i].map(func(n): return int(n))})
 	home = -1
 	coins = 180.0
 	elapsed = 0
-	units = [35, 8, 4]
-	levels = [1, 1, 1]
+	units = START_UNITS.duplicate()
+	levels = base_levels()
 	mission = {}
 	reports = {}
 	events = []
@@ -92,12 +105,13 @@ func reset() -> void:
 	notifications_seen = 0
 
 func start(id: int) -> void:
-	if id < 0 or id >= countries.size() or home != -1:
+	if id < 0 or id >= countries.size() or not country_visible(id) or home != -1:
 		return
 	home = id
 	countries[id].owned = true
 	units = START_UNITS.duplicate()
 	coins = START_COINS
+	Runtime.start(self)
 	log_event("Поднят ваш флаг: %s. История начинается." % atlas[id].name)
 	sound_requested.emit("start")
 
@@ -108,18 +122,50 @@ func owned_count() -> int:
 			total += 1
 	return total
 
+func country_visible(id: int) -> bool:
+	return atlas[id].enclave_hosts.is_empty() or countries[id].owned or countries[id].get("microstate", "hidden") != "hidden"
+
+func controls_world() -> bool:
+	var objective = Runtime.victory(self)
+	if objective != null: return bool(objective) and owned_count() > 0
+	for i in countries.size():
+		if countries[i].owned: continue
+		if not country_visible(i) and float(home) in atlas[i].enclave_hosts: continue
+		return false
+	return home >= 0
+
+func settle_microstate(id: int, peaceful: bool) -> void:
+	countries[id]["microstate"] = "accepted" if peaceful else "war"
+	if peaceful:
+		countries[id].owned = true
+		log_event("Микрогосударство %s приняло вашу власть и мирно присоединилось." % atlas[id].name)
+		sound_requested.emit("victory")
+	else:
+		if not id in wars: wars.append(id)
+		log_event("Микрогосударство %s отвергло вашу власть и объявило вам войну!" % atlas[id].name)
+		sound_requested.emit("warning")
+
+func resolve_microstates(host: int) -> void:
+	for id in MICROSTATES:
+		if not country_visible(id) and float(host) in atlas[id].enclave_hosts:
+			settle_microstate(id, rng.randi_range(0, 99) < B.microstate_accept_chance)
+
 func income() -> int:
 	var total = 0
 	for c in countries:
 		if c.owned:
 			for level in c.businesses:
 				total += int(level)
-	return total
+	return total + Runtime.extra_income(self)
 
-func power(army: Array, upgrades: Array = [1, 1, 1]) -> float:
+static func base_levels() -> Array:
+	return range(UNIT_COUNT).map(func(_i): return 1)
+
+func power(army: Array, upgrades: Array = [], bonuses: Array = []) -> float:
+	if upgrades.is_empty(): upgrades = base_levels()
 	var result = 0.0
-	for i in 3:
-		result += army[i] * UNIT_WEIGHT[i] * (1.0 + (upgrades[i] - 1) * B.technology_bonus)
+	for i in UNIT_COUNT:
+		result += army[i] * UNIT_WEIGHT[i] * (1.0 + (upgrades[i] - 1) * B.technology_bonus + (float(bonuses[i]) if not bonuses.is_empty() else (Runtime.unit_bonus(self, i) if is_same(army, units) else 0.0)))
 	return result
 
 func migrate_legacy_armies() -> int:
@@ -147,10 +193,11 @@ func border(id: int) -> bool:
 	return false
 
 func recruit(kind: int) -> bool:
-	if not can_act() or kind < 0 or kind > 2 or coins < UNIT_COST[kind]:
+	if not can_act() or kind < 0 or kind >= UNIT_COUNT or not Runtime.unit_available(self, kind) or coins < UNIT_COST[kind]:
 		return false
 	coins -= UNIT_COST[kind]
 	units[kind] += int(B.recruit_units[kind])
+	units_recruited.emit(kind, int(B.recruit_units[kind]))
 	sound_requested.emit("coins")
 	return true
 
@@ -158,7 +205,7 @@ func upgrade_cost(kind: int) -> int:
 	return int(B.technology_cost) * levels[kind]
 
 func upgrade_army(kind: int) -> bool:
-	if not can_act() or kind < 0 or kind > 2 or coins < upgrade_cost(kind):
+	if not can_act() or kind < 0 or kind >= UNIT_COUNT or not Runtime.unit_available(self, kind) or coins < upgrade_cost(kind):
 		return false
 	coins -= upgrade_cost(kind)
 	levels[kind] += 1
@@ -180,7 +227,7 @@ func upgrade_business(id: int, slot: int) -> bool:
 	return true
 
 func spy(id: int) -> bool:
-	if not can_act() or id < 0 or id >= countries.size() or countries[id].owned or not mission.is_empty() or coins < B.spy_cost:
+	if not can_act() or id < 0 or id >= countries.size() or not country_visible(id) or countries[id].owned or not mission.is_empty() or coins < B.spy_cost:
 		return false
 	coins -= B.spy_cost
 	mission = {"target": id, "from": origin_for(id), "start": elapsed, "arrival": elapsed + int(B.spy_seconds)}
@@ -194,8 +241,9 @@ func attack_cost(id: int) -> int:
 func attack_block(id: int) -> String:
 	if not can_act():
 		return "Кампания приостановлена"
-	if id < 0 or id >= countries.size() or countries[id].owned:
+	if id < 0 or id >= countries.size() or not country_visible(id) or countries[id].owned:
 		return "Выберите чужую страну"
+	if id in allied_countries or Runtime.allied(home, id): return "Allied country"
 	if has_operation("attack"):
 		return "Армия уже на марше"
 	if not border(id) and units[2] < B.naval_ships:
@@ -219,10 +267,10 @@ func resolve_attack(id: int, overseas: bool) -> Dictionary:
 	if not id in wars: wars.append(id)
 	var attackers = units.duplicate()
 	var defenders = countries[id].units.duplicate()
-	var defender_levels = enemy_levels.get(str(id), [1, 1, 1])
+	var defender_levels = enemy_levels.get(str(id), base_levels())
 	var support = 0
 	var strength = power(units, levels)
-	var defense = power(countries[id].units, enemy_levels.get(str(id), [1, 1, 1]))
+	var defense = power(countries[id].units, enemy_levels.get(str(id), base_levels()), enemy_bonuses.get(str(id), []))
 	if rebel_country(id):
 		support = rebel_bonus if network_game else rng.randi_range(1, 10)
 		defense *= 1.0 - support / 100.0
@@ -231,7 +279,7 @@ func resolve_attack(id: int, overseas: bool) -> Dictionary:
 	var victory = effective >= defense
 	var loss_rate = clampf(defense / maxf(effective, 1.0) * B.attack_loss, B.attack_loss_min, B.attack_loss_max)
 	var losses: Array = []
-	for i in 3:
+	for i in UNIT_COUNT:
 		var lost = mini(units[i], ceili(units[i] * loss_rate))
 		units[i] -= lost
 		losses.append(lost)
@@ -246,13 +294,15 @@ func resolve_attack(id: int, overseas: bool) -> Dictionary:
 				log_event("Ядерный арсенал: получен 1 удар за %d уникальных захватов." % conquests.size())
 				sound_requested.emit("unlock")
 		coins += B.loot
+		Runtime.emit_event(self, "country_captured", id)
 		log_event("Победа! %s под вашим контролем. Трофеи: %d монет." % [atlas[id].name, B.loot])
-		if owned_count() == countries.size():
+		if not network_game: resolve_microstates(id)
+		if not network_game and controls_world():
 			finished = true
 			log_event("МИР ОБЪЕДИНЁН. Вы завершили мировую кампанию!")
 	else:
 		defeats += 1
-		for i in 3:
+		for i in UNIT_COUNT:
 			countries[id].units[i] = maxi(0, countries[id].units[i] - ceili(countries[id].units[i] * B.defender_hold_loss))
 		log_event("Отступление из %s. Усильте армию перед новой атакой." % atlas[id].name)
 	var defender_losses = defenders.map(func(n): return ceili(n * (B.defender_retreat_loss if victory and network_game and enemy_levels.has(str(id)) else (1.0 if victory else B.defender_hold_loss))))
@@ -294,7 +344,7 @@ func dispatch_attack(id: int) -> bool:
 	return true
 
 func nuclear_strike(id: int) -> bool:
-	if not can_act() or nukes < 1 or id < 0 or id >= countries.size() or countries[id].owned or has_operation("nuke"):
+	if not can_act() or nukes < 1 or id < 0 or id >= countries.size() or not country_visible(id) or countries[id].owned or has_operation("nuke"):
 		return false
 	nukes -= 1
 	operations.append({"kind": "nuke", "from": origin_for(id), "target": id,
@@ -306,6 +356,7 @@ func nuclear_strike(id: int) -> bool:
 func launch_enemy_attack(attacker: int, target: int, surprise: bool = false) -> bool:
 	if not can_act() or owned_count() <= 1 or has_operation("enemy") or attacker < 0 or attacker >= countries.size() or target < 0 or target >= countries.size():
 		return false
+	if not country_visible(attacker): return false
 	var warning = pending_warning()
 	if not surprise and (warning.is_empty() or int(warning.attacker) != attacker or elapsed < warning.deadline or elapsed - warning.issued > 300):
 		return false
@@ -339,17 +390,17 @@ func resolve_enemy_attack(attacker: int, target: int, overseas: bool) -> void:
 	var defense = power(units, levels)
 	var lost_territory = assault > defense
 	var loss_rate = clampf(assault / maxf(defense, 1.0) * 0.2, 0.04, 0.6)
-	for i in 3:
+	for i in UNIT_COUNT:
 		units[i] = maxi(0, units[i] - ceili(units[i] * loss_rate))
 		countries[attacker].units[i] = maxi(0, countries[attacker].units[i] - ceili(countries[attacker].units[i] * (0.12 if lost_territory else 0.35)))
-	record_battle(target, false, not lost_territory, attackers, defenders, [1, 1, 1], levels, assault, defense, overseas, 0, attackers.map(func(n): return ceili(n * (0.12 if lost_territory else 0.35))), [defenders[0] - units[0], defenders[1] - units[1], defenders[2] - units[2]])
+	record_battle(target, false, not lost_territory, attackers, defenders, base_levels(), levels, assault, defense, overseas, 0, attackers.map(func(n): return ceili(n * (0.12 if lost_territory else 0.35))), range(UNIT_COUNT).map(func(i): return defenders[i] - units[i]))
 	if lost_territory:
 		defeats += 1
 		countries[target].owned = false
 		if not target in wars: wars.append(target)
 		if rebel_country(target): countries[target]["rebellion"] = {"previous_owned": true, "due": elapsed + rng.randi_range(120, 420)}
 		# Half the surviving attackers stay behind as the new garrison.
-		for i in 3:
+		for i in UNIT_COUNT:
 			var garrison = floori(countries[attacker].units[i] * 0.5)
 			countries[attacker].units[i] -= garrison
 			countries[target].units[i] = garrison
@@ -384,10 +435,10 @@ func schedule_warning() -> bool:
 		return false
 	var candidates: Array = []
 	for i in countries.size():
-		if not countries[i].owned and border(i): candidates.append(i)
+		if country_visible(i) and not countries[i].owned and border(i): candidates.append(i)
 	if candidates.is_empty():
 		for i in countries.size():
-			if not countries[i].owned and countries[i].units[2] >= 4: candidates.append(i)
+			if country_visible(i) and not countries[i].owned and countries[i].units[2] >= 4: candidates.append(i)
 	if candidates.is_empty(): return false
 	var enemy = candidates[rng.randi_range(0, candidates.size() - 1)]
 	var strength = power(countries[enemy].units)
@@ -434,7 +485,7 @@ func tick() -> bool:
 					log_event("Ядерный удар отменён: цель уже ваша. Заряд возвращён.")
 					sound_requested.emit("all_clear")
 				else:
-					for i in 3:
+					for i in UNIT_COUNT:
 						countries[target].units[i] = floori(countries[target].units[i] * 0.5)
 					effects.append({"kind": "nuke", "target": target})
 					log_event("Ядерный удар: %s. Каждый род войск сокращён на 50%%." % atlas[target].name)
@@ -450,9 +501,11 @@ func tick() -> bool:
 		var id = int(mission.target)
 		reports[str(id)] = {"units": countries[id].units.duplicate(), "time": elapsed}
 		mission = {}
+		Runtime.emit_event(self, "mission_completed", id)
 		log_event("Разведка завершена: %s. Состав войск раскрыт." % atlas[id].name)
 		sound_requested.emit("report")
 		changed = true
+	Runtime.tick(self)
 	if network_game: return changed
 	for id in countries.size():
 		var rebellion = countries[id].get("rebellion", {})
@@ -491,7 +544,7 @@ func tick() -> bool:
 			changed = true
 	elif elapsed % 45 == 0:
 		if owned_count() > 1 and rng.randf() < 0.2:
-			var candidates = range(countries.size()).filter(func(id): return not countries[id].owned and (border(id) or countries[id].units[2] >= 4))
+			var candidates = range(countries.size()).filter(func(id): return country_visible(id) and not countries[id].owned and (border(id) or countries[id].units[2] >= 4))
 			if not candidates.is_empty():
 				var attacker = candidates[rng.randi_range(0, candidates.size() - 1)]
 				changed = launch_enemy_attack(attacker, origin_for(attacker), true) or changed
@@ -505,7 +558,7 @@ func log_event(message: String) -> void:
 		events.resize(40)
 
 func export_data() -> Dictionary:
-	return {"version": 3, "home": home, "coins": coins, "elapsed": elapsed,
+	return {"version": 3, "mod_state": mod_state, "allied_countries": allied_countries, "mods": Engine.get_meta("atlas_mods", ""), "home": home, "coins": coins, "elapsed": elapsed,
 		"units": units, "levels": levels, "countries": countries, "mission": mission,
 		"reports": reports, "events": events, "player_color": player_color.to_html(false),
 		"campaign_id": campaign_id, "operations": operations, "conquests": conquests,
@@ -553,14 +606,22 @@ func load_game(path: String = SAVE_PATH) -> bool:
 	return restore_data(parser.data)
 
 func restore_data(data: Variant, announce_restore: bool = true) -> bool:
+	if not data is Dictionary or data.get("mods", "") != Engine.get_meta("atlas_mods", ""): return false
 	if not data is Dictionary or (data.get("version") != 1 and data.get("version") != 2 and data.get("version") != 3):
 		return false
 	if data.get("rules_version", B.version) != B.version: return false
+	var saved_allies = data.get("allied_countries", [])
+	if not valid_numbers(saved_allies, saved_allies.size() if saved_allies is Array else -1) or saved_allies.any(func(id): return id >= COUNTRY_COUNT): return false
+	if data.get("countries") is Array and data.countries.size() == LEGACY_COUNTRY_COUNT:
+		data = data.duplicate(true)
+		var defaults = get_script().new().countries
+		data.countries.append_array(defaults.slice(LEGACY_COUNTRY_COUNT))
 	for key in ["home", "coins", "elapsed"]:
 		if not (data.get(key) is float or data.get(key) is int) or not is_finite(float(data[key])):
 			return false
 	if data.home < 0 or data.home >= countries.size() or data.home != floorf(data.home) or data.coins < 0 or data.coins > 1e12 or data.elapsed < 0 or data.elapsed > 1e9 or data.elapsed != floorf(data.elapsed):
 		return false
+	if not Runtime.valid_state(data.get("mod_state", {}), int(data.get("elapsed", 0))): return false
 	var saved_battles = data.get("battles", [])
 	if not saved_battles is Array or saved_battles.size() > 20: return false
 	for battle in saved_battles:
@@ -569,18 +630,21 @@ func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 		for key in ["attacking", "won", "overseas"]:
 			if not battle.get(key) is bool: return false
 		for key in ["attackers", "defenders", "attack_losses", "defense_losses", "attack_levels", "defense_levels"]:
-			if not valid_numbers(battle.get(key), 3, 1 if key.ends_with("levels") else 0): return false
+			if not valid_numbers(battle.get(key), UNIT_COUNT, 1 if key.ends_with("levels") else 0): return false
 		for key in ["effective", "defense"]:
 			if not (battle.get(key) is int or battle.get(key) is float) or not is_finite(float(battle[key])) or battle[key] < 0 or battle[key] > 1e18: return false
-	if not valid_numbers(data.get("units"), 3) or not valid_numbers(data.get("levels"), 3, 1):
+	if not valid_numbers(data.get("units"), UNIT_COUNT) or not valid_numbers(data.get("levels"), UNIT_COUNT, 1):
 		return false
 	if not data.get("countries") is Array or data.countries.size() != countries.size():
 		return false
-	for c in data.countries:
-		if not c is Dictionary or not c.get("owned") is bool or not valid_numbers(c.get("units"), 3):
+	for i in data.countries.size():
+		var c = data.countries[i]
+		if not c is Dictionary or not c.get("owned") is bool or not valid_numbers(c.get("units"), UNIT_COUNT):
 			return false
+		if c.has("microstate") and (atlas[i].enclave_hosts.is_empty() or not c.microstate in ["accepted", "war"]): return false
 		if not c.get("businesses") is Array or c.businesses.size() < 1 or c.businesses.size() > 5 or not valid_numbers(c.businesses, c.businesses.size(), 1):
 			return false
+		if not Runtime.valid_structures(c.get("structures", {})): return false
 		var rebellion = c.get("rebellion", {})
 		if not rebellion is Dictionary: return false
 		if not rebellion.is_empty() and (not rebellion.get("previous_owned") is bool or not valid_numbers([rebellion.get("due")], 1) or rebellion.due > data.elapsed + 420): return false
@@ -603,7 +667,7 @@ func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 		var report = saved_reports[key]
 		if not str(key).is_valid_int() or int(key) < 0 or int(key) >= countries.size() or not report is Dictionary:
 			return false
-		if not valid_numbers(report.get("units"), 3) or not valid_numbers([report.get("time")], 1) or report.time > data.elapsed:
+		if not valid_numbers(report.get("units"), UNIT_COUNT) or not valid_numbers([report.get("time")], 1) or report.time > data.elapsed:
 			return false
 	var saved_color = data.get("player_color", "69dfbd")
 	if not saved_color is String or saved_color.length() != 6 or not Color.html_is_valid(saved_color):
@@ -701,7 +765,9 @@ func restore_data(data: Variant, announce_restore: bool = true) -> bool:
 		if updated > 0: log_event("Военный баланс GFP 2026: обновлено %d нетронутых чужих армий. Старые разведданные могут устареть." % updated)
 	effects = []
 	paused = false
-	finished = owned_count() == countries.size() or owned_count() == 0
+	mod_state = Runtime.Rules.numbers(data.get("mod_state", {}).duplicate(true))
+	allied_countries = saved_allies.map(func(id): return int(id))
+	finished = controls_world() or owned_count() == 0 or mod_state.get("result", "") == "lose"
 	cancel_protected_attacks()
 	if announce_restore: log_event("Кампания восстановлена. Добро пожаловать, командующий.")
 	return true

@@ -18,8 +18,8 @@ func id_for(g: RefCounted, name: String) -> int:
 
 func _initialize() -> void:
 	var g = Game.new()
-	check(g.military.source_year == 2026 and g.military.ranked_map_countries == 143, "Current GFP 2026 calibration covers 143 mapped countries")
-	check(g.military.armies.size() == 176, "Every map country has a defined baseline")
+	check(g.military.source_year == 2026 and g.military.ranked_map_countries == 145, "Current GFP 2026 calibration covers 145 mapped countries")
+	check(g.military.armies.size() == 244, "Every map country has a defined baseline")
 	var second = Game.new()
 	for i in g.countries.size():
 		check(g.countries[i].units == second.countries[i].units and g.countries[i].units.all(func(n): return n >= 0), "Military baseline is deterministic and non-negative")

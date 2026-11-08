@@ -1,1 +1,2 @@
-Fill in the changelog.md as the project evolves.
+Fill in the changelog.md as the project evolves (for any deletions, changes, and additions).
+When adding, modifying, or removing a function, adapt the mod system to accommodate the change (add something so that the mod works with the new or modified function, or remove something from the mod systems if it is being removed in the game itself and is no longer used). Update the documentation on the website, as well as the constructor on the website.

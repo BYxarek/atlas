@@ -36,7 +36,8 @@ func _ready() -> void:
 		limiter.ceiling_db = -1
 		AudioServer.add_bus_effect(0, limiter)
 	for cue in CUES:
-		streams[cue] = load("res://assets/audio/%s.ogg" % cue)
+		streams[cue] = preload("res://src/mod_media.gd").sound(cue)
+		if streams[cue] == null: streams[cue] = load("res://assets/audio/%s.ogg" % cue)
 	for i in 12:
 		var player = AudioStreamPlayer.new()
 		add_child(player)
@@ -45,7 +46,8 @@ func _ready() -> void:
 		var player = AudioStreamPlayer.new()
 		player.bus = "Effects"
 		player.stream = streams[cue].duplicate()
-		player.stream.loop = true
+		if player.stream is AudioStreamWAV: player.stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		else: player.stream.loop = true
 		player.volume_db = -29 if cue == "spy_loop" else -25
 		add_child(player)
 		loops[cue] = player

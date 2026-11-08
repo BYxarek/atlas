@@ -28,7 +28,7 @@ Cron exits after a short request. Client requests also advance time, so a minute
 
 ## Rooms and capacity
 
-Rooms support up to 176 humans/bots. The administrator manages seats and starts after everyone is ready. Start resources are equal: 35 infantry, 8 aircraft, 4 ships and 180 coins. PvP can eliminate the last territory. Exact enemy troops remain hidden until personal reconnaissance. Retrying an accepted command does not duplicate its purchase.
+Rooms support up to 239 humans/bots. The administrator manages seats and starts after everyone is ready. Start resources are equal: 35 infantry, 8 aircraft, 4 ships and 180 coins. PvP can eliminate the last territory. Exact enemy troops remain hidden until personal reconnaissance. Retrying an accepted command does not duplicate its purchase.
 
 Returning to the lobby pauses the room. Lost connections pause after the presence lease, default 20 seconds. Reconnect using the same profile and server address; after abrupt disconnects wait up to the lease duration. Administration can transfer to another connected human. Room codes are identifiers, not passwords. VPS/PHP/LAN saves remain separate.
 
@@ -49,3 +49,6 @@ For HTML responses instead of JSON check URLs, redirects, CAPTCHA, PHP errors an
 ## Diagnostics and consistent backups
 
 Set `metrics=true` in your private config to log numeric request/storage timings to the PHP error log. Metrics contain no identities or request bodies. Optional CLI: `php storage.php backup DATA_DIRECTORY SNAPSHOT_FILE` and `php storage.php restore DATA_DIRECTORY SNAPSHOT_FILE`. Store snapshots outside the public web root; use the existing stopped-API FTP procedure when CLI is unavailable. Restore preserves `before-restore.php`. See `docs/TECHNICAL_IMPROVEMENTS.ru.md` in the source repository for the coordinated client/server update and rollback procedure.
+
+
+Network mods / Сетевые моды: [единый формат .atlasmod для LAN, VPS и PHP](../docs/MODS.md). Папка: `network_mods/` рядом с `api.php`; обновляйте клиент и сервер вместе (PHP protocol 5).

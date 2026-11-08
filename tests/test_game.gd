@@ -12,7 +12,7 @@ func check(condition: bool, message: String) -> void:
 
 func _initialize() -> void:
 	var g = Game.new()
-	check(g.countries.size() == 176, "World has 176 countries")
+	check(g.countries.size() == 244, "World has 244 countries")
 	check(g.income() == 0 and not g.can_act(), "No income before campaign starts")
 	for c in g.countries:
 		check(c.businesses.size() >= 1 and c.businesses.size() <= 5, "1–5 businesses per country")

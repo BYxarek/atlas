@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "microstate_accept_chance": 50,
   "unit_cost": [
     12,
     28,

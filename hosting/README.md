@@ -28,7 +28,7 @@
 
 ## Комнаты и возвращение
 
-После подключения игрок видит список комнат и может создать свою. В комнате до 176 игроков и ботов. Администратор выбирает запуск после готовности всех, добавляет ботов, удаляет участников. Каждый выбирает свою страну и цвет. Старт одинаковый: 35 пехоты, 8 авиации, 4 корабля и 180 монет. В PvP можно потерять последнюю страну.
+После подключения игрок видит список комнат и может создать свою. В комнате до 239 игроков и ботов. Администратор выбирает запуск после готовности всех, добавляет ботов, удаляет участников. Каждый выбирает свою страну и цвет. Старт одинаковый: 35 пехоты, 8 авиации, 4 корабля и 180 монет. В PvP можно потерять последнюю страну.
 
 Финансы, результаты боя и разведданные рассчитывает PHP. Точные чужие войска не передаются до личной разведки. Повтор отправленного запроса после сетевой ошибки не повторяет покупку или списание денег.
 
@@ -63,3 +63,6 @@
 ## Diagnostics and consistent backups
 
 Set `metrics=true` in your private config to log numeric request/storage timings to the PHP error log. Metrics contain no identities or request bodies. Optional CLI: `php storage.php backup DATA_DIRECTORY SNAPSHOT_FILE` and `php storage.php restore DATA_DIRECTORY SNAPSHOT_FILE`. Store snapshots outside the public web root; use the existing stopped-API FTP procedure when CLI is unavailable. Restore preserves `before-restore.php`. See `docs/TECHNICAL_IMPROVEMENTS.ru.md` in the source repository for the coordinated client/server update and rollback procedure.
+
+
+Network mods / Сетевые моды: [единый формат .atlasmod для LAN, VPS и PHP](../docs/MODS.ru.md). Папка: `network_mods/` рядом с `api.php`; обновляйте клиент и сервер вместе (PHP protocol 5).

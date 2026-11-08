@@ -24,14 +24,14 @@ func run() -> void:
 	session.host_slot = "host"
 	session.my_slot = "host"
 	session.players.host = session.make_player("Host", "", 1, false)
-	check(not session.apply_request(1, "bot", [176]), "Reject overflow without creating any bots")
+	check(not session.apply_request(1, "bot", [Session.MAX_PLAYERS]), "Reject overflow without creating any bots")
 	check(session.players.size() == 1, "Overflow is atomic")
 	for count in [-1, 0, 1.5, "2"]:
 		check(not session.apply_request(1, "bot", [count]), "Reject invalid bot count")
-	check(session.apply_request(1, "bot", [175]), "Allow one player and 175 bots")
+	check(session.apply_request(1, "bot", [Session.MAX_PLAYERS - 1]), "Allow one player and the remaining bot seats")
 	var homes = {}
 	for player in session.players.values(): homes[player.home] = true
-	check(homes.size() == 176 and session.players.size() == 176, "Every participant has a distinct country")
+	check(homes.size() == Session.MAX_PLAYERS and session.players.size() == Session.MAX_PLAYERS, "Every participant has a distinct country")
 	check(not session.apply_request(1, "bot", [1]), "Reject adding to a full room")
 	var crowded = World.new()
 	for slot in session.players:
@@ -43,7 +43,7 @@ func run() -> void:
 		check(not profile in unique_profiles, "Every bot has a distinct profile within the session")
 		unique_profiles.append(profile)
 	var full_view = crowded.view("host", session.players)
-	check(Game.new().restore_data(full_view.game, false) and full_view.remote.size() <= 350 and full_view.sounds.size() <= 40, "Full room ticks and sends a valid client view")
+	check(Game.new().restore_data(full_view.game, false) and full_view.remote.size() <= Game.COUNTRY_COUNT * 2 and full_view.sounds.size() <= 40, "Full room ticks and sends a valid client view")
 	session.active = false
 	session.queue_free()
 
@@ -70,7 +70,7 @@ func run() -> void:
 	check(restored.owners[1] == "a" and 1 in restored.factions.b.wars, "Surprise battle captures land and marks lost territory")
 	check(restored.factions.b.events.any(func(event): return event.text.contains("Внезапное")), "Surprise is announced at battle")
 	var strong = -1
-	for id in 176:
+	for id in Game.COUNTRY_COUNT:
 		if w.factions.a.rebel_country(id):
 			strong = id
 			break

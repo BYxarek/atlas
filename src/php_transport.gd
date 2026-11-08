@@ -14,6 +14,7 @@ var stopped = false
 var next_poll = 0
 var poll_ms = 1000
 var last_success = 0
+var request_started = 0
 var lobby_signature = ""
 
 func _ready() -> void:
@@ -24,8 +25,11 @@ func _ready() -> void:
 	add_child(http)
 	http.request_completed.connect(completed)
 	last_success = Time.get_ticks_msec()
+	var nonce = net.mods.target.get("nonce", "")
+	if not nonce is String or nonce.length() != 32 or not nonce.is_valid_hex_number(): nonce = Crypto.new().generate_random_bytes(16).hex_encode()
+	net.mods.target.nonce = nonce
 	current = {"action": "connect", "name": net.player_name, "token": net.login_token(),
-		"nonce": Crypto.new().generate_random_bytes(16).hex_encode(), "protocol": 2}
+		"nonce": nonce, "protocol": 5, "mods": net.mods.hashes()}
 
 func enqueue(action: String, args: Array = [], command: String = "") -> bool:
 	if stopped or pending.size() >= 16 or session.is_empty(): return false
@@ -46,9 +50,14 @@ func _process(_delta: float) -> void:
 	if current.is_empty(): current = pending[0].duplicate(true) if not pending.is_empty() else {"action": "poll"}
 	var body = current.duplicate(true)
 	if not session.is_empty(): body.session = session
+	if current.action == "poll" and net.stage == "lobby":
+		var ping = net.quality.ping_ms(now)
+		if ping >= 0: body.ping_ms = ping
+	request_started = now
 	busy = true
 	var error = http.request(endpoint, ["Content-Type: application/json", "Accept: application/json"], HTTPClient.METHOD_POST, JSON.stringify(body))
 	if error != OK:
+		if current.action == "poll" and net.stage == "lobby": net.quality.record(-1, now)
 		busy = false
 		next_poll = now + 1000
 
@@ -63,8 +72,11 @@ func numbers(value: Variant) -> Variant:
 func completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	busy = false
 	if stopped or not net.active: return
+	var now = Time.get_ticks_msec()
+	var measure = current.get("action") == "poll" and net.stage == "lobby"
 	if result != HTTPRequest.RESULT_SUCCESS or code >= 500:
-		next_poll = Time.get_ticks_msec() + 1000
+		if measure: net.quality.record(-1, now)
+		next_poll = now + 1000
 		return
 	var parser = JSON.new()
 	if parser.parse(body.get_string_from_utf8()) != OK or not parser.data is Dictionary:
@@ -74,11 +86,16 @@ func completed(result: int, code: int, _headers: PackedStringArray, body: Packed
 	if code != 200 or data.get("ok") != true:
 		net.shutdown(str(data.get("error", L.text("Ошибка PHP-сервера"))).substr(0, 200))
 		return
+	if measure: net.quality.record(now - request_started, now)
 	if current.action == "connect":
 		if not data.get("session") is String or data.session.length() != 64 or not data.session.is_valid_hex_number():
 			net.shutdown(L.text("Несовместимое подключение к PHP-серверу."))
 			return
 		session = data.session
+		if not data.get("ack") is int or data.ack < 0 or data.ack > 2147483647:
+			net.shutdown("Invalid PHP command sequence")
+			return
+		sequence = data.ack
 	elif current.has("seq"):
 		if not data.get("ack") is int or data.ack < current.seq: return
 		pending.pop_front()
@@ -86,6 +103,10 @@ func completed(result: int, code: int, _headers: PackedStringArray, body: Packed
 	last_success = Time.get_ticks_msec()
 	if data.get("poll_ms") is int: poll_ms = clampi(data.poll_ms, 750, 5000)
 	next_poll = last_success + (poll_ms if pending.is_empty() else 0)
+	if data.get("mod_offer") is Array:
+		net.mods.receive_offer(data.mod_offer)
+		return
+	if net.stage == "mods": return
 	if data.has("error"): net.notice.emit(str(data.error).substr(0, 200))
 	if data.get("mode") == "directory" and data.get("directory") is Dictionary:
 		lobby_signature = ""
@@ -95,6 +116,7 @@ func completed(result: int, code: int, _headers: PackedStringArray, body: Packed
 		if signature != lobby_signature or net.stage != data.mode:
 			lobby_signature = signature
 			net._lobby_update(data.lobby)
+		net.update_player_pings(data.get("pings"))
 		if data.mode == "game" and data.get("view") is Dictionary: net.view_received.emit(data.view)
 	else: net.shutdown(L.text("Несовместимое состояние PHP-сервера."))
 

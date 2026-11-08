@@ -60,6 +60,12 @@ func run() -> void:
 	press("Создать комнату на сервере")
 	await until(func(): return scene.page == "lobby", "Remote lobby")
 	check(scene.network.is_admin() and not scene.network.hosting, "Remote administrator controls are available")
+	scene.show_fps = true
+	var metrics: Label = scene.online.lobby_telemetry
+	await until(func(): return scene.network.player_ping_ms(scene.network.my_slot) >= 0, "Local lobby ping measured")
+	scene.update_performance_overlay()
+	check(scene.online.lobby_telemetry == metrics and not scene.fps_panel.visible and metrics.text.begins_with("FPS "), "Public room combines metrics without rebuilding the lobby")
+	check(metrics.text.contains(scene.online.ping_text(scene.network.my_slot)) and scene.online.lobby_ping_rows.size() == 1, "Room shows the current player's ping")
 	for input in scene.overlay.find_children("*", "LineEdit", true, false):
 		if input.accessibility_name == scene.L.text("Количество ботов"): input.text = "10"
 	press("Добавить ботов")
@@ -83,8 +89,12 @@ func run() -> void:
 	check(scene.game.home == -1 and scene.game.paused, "Remote proxy cleared on leave")
 	await capture("vps-rooms-preview")
 	press("Удалить комнату")
-	var dialog = scene.find_children("*", "ConfirmationDialog", true, false)[0]
-	dialog.confirmed.emit()
+	if scene.mobile:
+		var buttons = scene.mobile_modal.find_children("*", "Button", true, false)
+		buttons.filter(func(button): return button.text == scene.L.text("Подтвердить"))[0].pressed.emit()
+	else:
+		var dialog = scene.find_children("*", "ConfirmationDialog", true, false)[0]
+		dialog.confirmed.emit()
 	await until(func(): return scene.network.directory_rooms.is_empty(), "Delete room from UI")
 	scene.network.shutdown("")
 	check(scene.page == "menu", "Disconnect returns to main menu")

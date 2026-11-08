@@ -13,7 +13,7 @@ aliases = {"United States": "United States of America", "Turkiye": "Turkey", "Se
            "Tanzania": "United Republic of Tanzania", "Beliz": "Belize"}
 ranks = {aliases.get(name, name): i + 1 for i, name in enumerate(names)}
 world = json.loads((ROOT / "assets/world.json").read_text(encoding="utf-8"))
-landlocked = set("Afghanistan|Armenia|Austria|Azerbaijan|Belarus|Bhutan|Bolivia|Botswana|Burkina Faso|Burundi|Central African Republic|Chad|Czechia|Ethiopia|Hungary|Kazakhstan|Kosovo|Kyrgyzstan|Laos|Lesotho|Luxembourg|North Macedonia|Mali|Moldova|Mongolia|Nepal|Niger|Paraguay|Rwanda|Republic of Serbia|Slovakia|South Sudan|eSwatini|Switzerland|Tajikistan|Turkmenistan|Uganda|Uzbekistan|Zambia|Zimbabwe".split("|"))
+landlocked = set("Afghanistan|Armenia|Austria|Azerbaijan|Belarus|Bhutan|Bolivia|Botswana|Burkina Faso|Burundi|Central African Republic|Chad|Czechia|Ethiopia|Hungary|Kazakhstan|Kosovo|Kyrgyzstan|Laos|Lesotho|Luxembourg|North Macedonia|Mali|Moldova|Mongolia|Nepal|Niger|Paraguay|Rwanda|Republic of Serbia|Slovakia|South Sudan|eSwatini|Switzerland|Tajikistan|Turkmenistan|Uganda|Uzbekistan|Zambia|Zimbabwe|Andorra|Liechtenstein|San Marino|Vatican".split("|"))
 armies = []
 covered = 0
 for country in world:
@@ -27,7 +27,7 @@ for country in world:
     assert min(army) >= 0 and sum(a * w for a, w in zip(army, [1, 3, 4])) == budget
     armies.append(army)
 unmapped = sorted(set(ranks) - {country["english"] for country in world})
-assert unmapped == ["Bahrain", "Singapore"], unmapped
+assert not unmapped, unmapped
 data = {"balance_version": 2026, "checked_on": "2026-11-03", "source": "https://www.globalfirepower.com/countries-listing.php",
         "source_year": 2026, "ranked_map_countries": covered, "unranked_power": 36, "armies": armies}
 (ROOT / "assets/military.json").write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")

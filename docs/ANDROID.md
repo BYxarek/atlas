@@ -20,7 +20,7 @@ The helper downloads the release template when missing, exports, signs, checks t
 
 A first build generates a signing key and config in `%USERPROFILE%/.atlas/signing`: `android-release.jks` and `android-release.json`. **Back up both privately.** Future install-over updates need the same key and an increasing Android version code. Forks should use their own signing key and package ID. Never commit signing credentials.
 
-Version name is `0.2.0`. Android version code is `13`, preserving updates from version code `12`. The existing signing identity is retained.
+Version name is `0.3.0` with Android version code `14`. It uses the existing signing identity for install-over updates from version code `13`.
 
 ## Validation limits
 

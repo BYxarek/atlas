@@ -1,6 +1,7 @@
 extends SceneTree
 
 const World = preload("res://src/network_world.gd")
+const Game = preload("res://src/game.gd")
 
 func _initialize() -> void:
 	var args = OS.get_cmdline_user_args()
@@ -15,7 +16,8 @@ func _initialize() -> void:
 		var homes = {}
 		for i in 6:
 			var slot = "bot%d" % i
-			var home = (i * 29 + run * 11) % 176
+			var home = (i * 29 + run * 11) % Game.COUNTRY_COUNT
+			while home in Game.MICROSTATES or home in homes.values(): home = (home + 1) % Game.COUNTRY_COUNT
 			slots.append(slot)
 			homes[slot] = home
 			assert(w.add_faction(slot, home, "69dfbd"))
@@ -33,14 +35,14 @@ func _initialize() -> void:
 				if lost_ground.has(slot) and count > int(previous_counts.get(slot, 1)): recovered[slot] = true
 				previous_counts[slot] = count
 				peak[slot] = maxi(count, int(peak.get(slot, 1)))
-			if w.owners.count(w.owners[0]) == 176: break
+			if w.owners.count(w.owners[0]) == Game.COUNTRY_COUNT: break
 		var factions = []
 		for slot in slots:
 			var g = w.factions[slot]
 			factions.append({"slot": slot, "home": homes[slot], "profile": w.bot_profiles.get(slot, {}),
 				"territories": w.owners.count(slot), "peak": peak[slot], "regained_after_loss": recovered.get(slot, false),
 				"army": g.units, "technology": g.levels, "coins": g.coins, "victories": g.victories, "defeats": g.defeats})
-		results.append({"seed": 2026 + run * 7919, "elapsed": w.elapsed, "finished": w.owners.count(w.owners[0]) == 176,
+		results.append({"seed": 2026 + run * 7919, "elapsed": w.elapsed, "finished": w.owners.count(w.owners[0]) == Game.COUNTRY_COUNT,
 			"first_conquest": first_conquest, "factions": factions})
 	var file = FileAccess.open("res://build/balance-report.json", FileAccess.WRITE)
 	assert(file != null)

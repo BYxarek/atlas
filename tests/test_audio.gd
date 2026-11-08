@@ -109,6 +109,8 @@ func run() -> void:
 			if absf(frame.x) + absf(frame.y) > 0.00001: audible = true
 		check(buffer.size() > 0 and audible, "Native audio mixer produces non-silent output")
 		AudioServer.remove_bus_effect(0, AudioServer.get_bus_effect_count(0) - 1)
+	for player in sound.players + sound.loops.values(): player.stop()
+	await create_timer(0.2).timeout
 	sound.queue_free()
 	await process_frame
 	await process_frame

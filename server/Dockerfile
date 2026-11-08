@@ -12,7 +12,7 @@ RUN curl -fL --retry 3 https://github.com/godotengine/godot-builds/releases/down
     && unzip /tmp/godot.zip -d /tmp \
     && install /tmp/Godot_v4.8-beta2_linux.x86_64 /usr/local/bin/godot
 WORKDIR /project
-COPY project.godot main.tscn export_presets.cfg ./
+COPY project.godot main.tscn bootstrap.tscn export_presets.cfg ./
 COPY src ./src
 COPY assets/world.json assets/military.json assets/balance.json assets/icon.svg ./assets/
 COPY assets/i18n ./assets/i18n
@@ -26,7 +26,7 @@ RUN mkdir /data /app && chown 10001:10001 /data /app
 COPY --from=builder /usr/local/bin/godot /usr/local/bin/godot
 COPY --from=builder /out/AtlasServer.pck /app/AtlasServer.pck
 COPY server/entrypoint.py /app/entrypoint.py
-ENV ATLAS_PORT=24760 ATLAS_MAX_ROOMS=8 ATLAS_DATA_DIR=/data XDG_DATA_HOME=/tmp/godot HOME=/tmp
+ENV ATLAS_PORT=24760 ATLAS_MAX_ROOMS=8 ATLAS_DATA_DIR=/data ATLAS_MODS_DIR=/data/network_mods XDG_DATA_HOME=/tmp/godot HOME=/tmp
 USER 10001:10001
 WORKDIR /app
 EXPOSE 24760/tcp

@@ -1,4 +1,4 @@
 Options -Indexes
-<FilesMatch "^(service|simulation|config|config\.example)\.php$">
+<FilesMatch "^(service|simulation|mod_catalog|mod_rules|mod_runtime|config|config\.example)\.php$">
     Require all denied
 </FilesMatch>

@@ -10,6 +10,7 @@ static func load_catalog() -> void:
 	if loaded: return
 	loaded = true
 	catalog = JSON.parse_string(FileAccess.get_file_as_string("res://assets/i18n/en.json"))
+	catalog.merge(Engine.get_meta("atlas_content", {}).get("translations", {}).get("en", {}), true)
 	var translation = Translation.new()
 	translation.locale = "en"
 	var russian = Translation.new()
@@ -58,7 +59,7 @@ static func set_language(value: String) -> void:
 	TranslationServer.set_locale(language)
 
 static func text(value: String) -> String:
-	if language != "en": return value
+	if language != "en": return str(Engine.get_meta("atlas_content", {}).get("translations", {}).get("ru", {}).get(value, value))
 	load_catalog()
 	return str(TranslationServer.translate(value))
 
@@ -66,7 +67,7 @@ static func country(value: Dictionary) -> String:
 	return str(value.english if language == "en" else value.name)
 
 static func render(value: String, depth: int = 0) -> String:
-	if language != "en": return value
+	if language != "en": return str(Engine.get_meta("atlas_content", {}).get("translations", {}).get("ru", {}).get(value, value))
 	load_catalog()
 	if catalog.has(value): return catalog[value]
 	if countries.has(value): return countries[value]
