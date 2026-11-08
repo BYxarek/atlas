@@ -45,7 +45,9 @@ func run() -> void:
 	check(scene.menu_shell.modulate.a < 1.0, "Mobile page starts fading in")
 	var replaced_shell = scene.menu_shell
 	scene.show_settings()
-	await create_timer(0.25).timeout
+	var transition: Tween = scene.menu_shell.get_meta("page_tween")
+	transition.custom_step(1.0)
+	await process_frame
 	check(not is_instance_valid(replaced_shell), "Rapid navigation frees the previous animated page")
 	check(is_equal_approx(scene.menu_shell.modulate.a, 1.0) and scene.menu_shell.scale == Vector2.ONE, "Page transition restores opacity and scale")
 	scene.show_settings()

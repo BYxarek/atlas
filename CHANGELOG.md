@@ -4,6 +4,7 @@
 
 ## 0.3.0 — 2026-11-08
 
+- Make the mobile page transition test independent of runner frame timing.
 - Set the Android version code to 14 and update the mod SDK, browser editor and examples for game version 0.3.0.
 - Restrict phone orientation to landscape in both horizontal directions.
 - Add a persistent FPS counter and public lobby diagnostics showing server round-trip time, recent probe/request failures and each connected player's ping. Show raw packet loss as unavailable on WebSocket and HTTPS.
