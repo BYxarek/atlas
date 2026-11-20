@@ -1,0 +1,55 @@
+<WixLocalization Culture="en-US" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <!-- Windows Installer displays a formatted group only when its language property is set. -->
+  <String Id="AtlasSetup" Value="{ATLAS Setup[AtlasEnglish]}{Установка ATLAS[AtlasRussian]}" />
+  <String Id="AtlasOptionsTitle" Value="{\WixUI_Font_Title}{Install ATLAS[AtlasEnglish]}{Установка ATLAS[AtlasRussian]}" />
+  <String Id="AtlasOptionsDescription" Value="{Choose where to install the game and which shortcuts to create.[AtlasEnglish]}{Выберите папку установки и ярлыки игры.[AtlasRussian]}" />
+  <String Id="AtlasFolder" Value="{Installation folder[AtlasEnglish]}{Папка установки[AtlasRussian]}" />
+  <String Id="AtlasBrowse" Value="{Browse…[AtlasEnglish]}{Обзор…[AtlasRussian]}" />
+  <String Id="AtlasStartMenu" Value="{Create a Start menu shortcut[AtlasEnglish]}{Создать ярлык в меню «Пуск»[AtlasRussian]}" />
+  <String Id="AtlasDesktop" Value="{Create a desktop shortcut[AtlasEnglish]}{Создать ярлык на рабочем столе[AtlasRussian]}" />
+  <String Id="AtlasInstall" Value="&amp;{Install[AtlasEnglish]}{Установить[AtlasRussian]}" />
+  <String Id="AtlasLaunchGame" Value="{Launch the game[AtlasEnglish]}{Запустить игру[AtlasRussian]}" />
+
+  <String Id="WixUIBack" Value="&amp;{Back[AtlasEnglish]}{Назад[AtlasRussian]}" />
+  <String Id="WixUINext" Value="&amp;{Next[AtlasEnglish]}{Далее[AtlasRussian]}" />
+  <String Id="WixUICancel" Value="{Cancel[AtlasEnglish]}{Отмена[AtlasRussian]}" />
+  <String Id="WixUIFinish" Value="&amp;{Finish[AtlasEnglish]}{Готово[AtlasRussian]}" />
+  <String Id="WixUIYes" Value="&amp;{Yes[AtlasEnglish]}{Да[AtlasRussian]}" />
+  <String Id="WixUINo" Value="&amp;{No[AtlasEnglish]}{Нет[AtlasRussian]}" />
+  <String Id="CancelDlgText" Value="{Cancel ATLAS Setup?[AtlasEnglish]}{Отменить установку ATLAS?[AtlasRussian]}" />
+  <String Id="BrowseDlgComboLabel" Value="{Look in:[AtlasEnglish]}{Папка:[AtlasRussian]}" />
+  <String Id="BrowseDlgPathLabel" Value="{Folder name:[AtlasEnglish]}{Имя папки:[AtlasRussian]}" />
+  <String Id="BrowseDlgDescription" Value="{Select where ATLAS will be installed.[AtlasEnglish]}{Выберите, куда установить ATLAS.[AtlasRussian]}" />
+  <String Id="BrowseDlgTitle" Value="{\WixUI_Font_Title}{Choose a folder[AtlasEnglish]}{Выбор папки[AtlasRussian]}" />
+
+  <String Id="MaintenanceTypeDlgTitle" Value="{\WixUI_Font_Title}{Maintain ATLAS[AtlasEnglish]}{Обслуживание ATLAS[AtlasRussian]}" />
+  <String Id="MaintenanceTypeDlgDescription" Value="{Choose an operation.[AtlasEnglish]}{Выберите действие.[AtlasRussian]}" />
+  <String Id="MaintenanceTypeDlgChangeButton" Value="{Change[AtlasEnglish]}{Изменить[AtlasRussian]}" />
+  <String Id="MaintenanceTypeDlgChangeDisabledText" Value="{ATLAS has no optional components.[AtlasEnglish]}{У ATLAS нет дополнительных компонентов.[AtlasRussian]}" />
+  <String Id="MaintenanceTypeDlgRepairButton" Value="&amp;{Repair[AtlasEnglish]}{Восстановить[AtlasRussian]}" />
+  <String Id="MaintenanceTypeDlgRepairText" Value="{Restore missing or damaged game files and shortcuts.[AtlasEnglish]}{Восстановить файлы игры и ярлыки.[AtlasRussian]}" />
+  <String Id="MaintenanceTypeDlgRemoveButton" Value="{Remove[AtlasEnglish]}{Удалить[AtlasRussian]}" />
+  <String Id="MaintenanceTypeDlgRemoveText" Value="{Uninstall the game and its shortcuts.[AtlasEnglish]}{Удалить игру и её ярлыки.[AtlasRussian]}" />
+  <String Id="VerifyReadyDlgRepair" Value="&amp;{Repair[AtlasEnglish]}{Восстановить[AtlasRussian]}" />
+  <String Id="VerifyReadyDlgRepairTitle" Value="{\WixUI_Font_Title}{Ready to repair ATLAS[AtlasEnglish]}{Готово к восстановлению ATLAS[AtlasRussian]}" />
+  <String Id="VerifyReadyDlgRepairText" Value="{Click Repair to restore the installation.[AtlasEnglish]}{Нажмите «Восстановить», чтобы восстановить установку.[AtlasRussian]}" />
+  <String Id="VerifyReadyDlgRemove" Value="&amp;{Remove[AtlasEnglish]}{Удалить[AtlasRussian]}" />
+  <String Id="VerifyReadyDlgRemoveTitle" Value="{\WixUI_Font_Title}{Ready to remove ATLAS[AtlasEnglish]}{Готово к удалению ATLAS[AtlasRussian]}" />
+  <String Id="VerifyReadyDlgRemoveText" Value="{Click Remove to uninstall the game.[AtlasEnglish]}{Нажмите «Удалить», чтобы удалить игру.[AtlasRussian]}" />
+
+  <String Id="ProgressDlgTitleInstalling" Value="{\WixUI_Font_Title}{Installing ATLAS[AtlasEnglish]}{Установка ATLAS[AtlasRussian]}" />
+  <String Id="ProgressDlgTitleRepairing" Value="{\WixUI_Font_Title}{Repairing ATLAS[AtlasEnglish]}{Восстановление ATLAS[AtlasRussian]}" />
+  <String Id="ProgressDlgTitleRemoving" Value="{\WixUI_Font_Title}{Removing ATLAS[AtlasEnglish]}{Удаление ATLAS[AtlasRussian]}" />
+  <String Id="ProgressDlgTextInstalling" Value="{Please wait while setup installs the game.[AtlasEnglish]}{Подождите, идёт установка игры.[AtlasRussian]}" />
+  <String Id="ProgressDlgTextRepairing" Value="{Please wait while setup repairs the game.[AtlasEnglish]}{Подождите, идёт восстановление игры.[AtlasRussian]}" />
+  <String Id="ProgressDlgTextRemoving" Value="{Please wait while setup removes the game.[AtlasEnglish]}{Подождите, идёт удаление игры.[AtlasRussian]}" />
+  <String Id="ProgressDlgStatusLabel" Value="{Status:[AtlasEnglish]}{Состояние:[AtlasRussian]}" />
+  <String Id="ExitDialogTitle" Value="{\WixUI_Font_Bigger}{Setup completed[AtlasEnglish]}{Работа мастера завершена[AtlasRussian]}" />
+  <String Id="ExitDialogDescription" Value="{Click Finish to close the wizard.[AtlasEnglish]}{Нажмите «Готово», чтобы закрыть мастер.[AtlasRussian]}" />
+  <String Id="FatalErrorTitle" Value="{\WixUI_Font_Bigger}{Setup ended with an error[AtlasEnglish]}{Работа мастера завершилась с ошибкой[AtlasRussian]}" />
+  <String Id="FatalErrorDescription1" Value="{The requested operation could not be completed.[AtlasEnglish]}{Не удалось завершить выбранное действие.[AtlasRussian]}" />
+  <String Id="FatalErrorDescription2" Value="{Click Finish to close the wizard.[AtlasEnglish]}{Нажмите «Готово», чтобы закрыть мастер.[AtlasRussian]}" />
+  <String Id="UserExitTitle" Value="{\WixUI_Font_Bigger}{Setup was canceled[AtlasEnglish]}{Работа мастера отменена[AtlasRussian]}" />
+  <String Id="UserExitDescription1" Value="{The requested operation was canceled.[AtlasEnglish]}{Выбранное действие отменено.[AtlasRussian]}" />
+  <String Id="UserExitDescription2" Value="{Click Finish to close the wizard.[AtlasEnglish]}{Нажмите «Готово», чтобы закрыть мастер.[AtlasRussian]}" />
+</WixLocalization>

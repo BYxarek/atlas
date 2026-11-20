@@ -1,0 +1,100 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <UI Id="AtlasInstallerUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="ARPNOMODIFY" Value="1" />
+      <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+      <Property Id="AtlasLanguageMarker" Value="&#160;" />
+      <Property Id="AtlasEnglish" Value="&#160;" />
+
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="CancelDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="ExitDialog" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MaintenanceTypeDlg" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="OutOfDiskDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="VerifyReadyDlg" />
+
+      <Dialog Id="AtlasLanguage" Width="370" Height="270" Title="ATLAS [ProductVersion]">
+        <Control Id="Russian" Type="PushButton" X="112" Y="243" Width="76" Height="17" Text="Русский" Default="yes">
+          <Publish Property="AtlasEnglish" Value="{}" />
+          <Publish Property="AtlasRussian" Value="[AtlasLanguageMarker]" />
+          <Publish Event="NewDialog" Value="AtlasOptions" Condition="NOT Installed" />
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg" Condition="Installed" />
+        </Control>
+        <Control Id="English" Type="PushButton" X="194" Y="243" Width="76" Height="17" Text="English">
+          <Publish Property="AtlasRussian" Value="{}" />
+          <Publish Property="AtlasEnglish" Value="[AtlasLanguageMarker]" />
+          <Publish Event="NewDialog" Value="AtlasOptions" Condition="NOT Installed" />
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg" Condition="Installed" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="276" Y="243" Width="84" Height="17" Text="Отмена / Cancel" Cancel="yes">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+        <Control Id="Bitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="no" Text="WixUI_Bmp_Dialog" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="135" Y="20" Width="220" Height="60" Transparent="yes" NoPrefix="yes"
+                 Text="{\WixUI_Font_Bigger}Язык установки / Setup language" />
+      </Dialog>
+
+      <Dialog Id="AtlasOptions" Width="370" Height="270" Title="!(loc.AtlasSetup)" TrackDiskSpace="yes">
+        <Control Id="Install" Type="PushButton" X="236" Y="243" Width="64" Height="17" Default="yes" Text="!(loc.AtlasInstall)">
+          <Publish Event="CheckTargetPath" Value="[WIXUI_INSTALLDIR]" />
+          <Publish Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" />
+          <Publish Property="STARTMENUSHORTCUT" Value="1" Condition="AtlasStartChecked" />
+          <Publish Property="STARTMENUSHORTCUT" Value="0" Condition="NOT AtlasStartChecked" />
+          <Publish Property="DESKTOPSHORTCUT" Value="1" Condition="AtlasDesktopChecked" />
+          <Publish Property="DESKTOPSHORTCUT" Value="0" Condition="NOT AtlasDesktopChecked" />
+          <Publish Event="SpawnDialog" Value="OutOfDiskDlg" Condition="OutOfDiskSpace = 1" />
+          <Publish Property="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="!(loc.AtlasLaunchGame)" Condition="OutOfDiskSpace &lt;&gt; 1" />
+          <Publish Event="EndDialog" Value="Return" Condition="OutOfDiskSpace &lt;&gt; 1" />
+        </Control>
+        <Control Id="Back" Type="PushButton" X="176" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="AtlasLanguage" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+        <Control Id="FolderLabel" Type="Text" X="20" Y="62" Width="330" Height="15" Text="!(loc.AtlasFolder)" />
+        <Control Id="Folder" Type="PathEdit" X="20" Y="80" Width="262" Height="18" Property="WIXUI_INSTALLDIR" Indirect="yes" />
+        <Control Id="Browse" Type="PushButton" X="288" Y="80" Width="62" Height="17" Text="!(loc.AtlasBrowse)">
+          <Publish Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" />
+          <Publish Event="SpawnDialog" Value="BrowseDlg" />
+        </Control>
+        <Control Id="StartMenu" Type="CheckBox" X="20" Y="125" Width="330" Height="17"
+                 Property="AtlasStartChecked" CheckBoxValue="1" Text="!(loc.AtlasStartMenu)" />
+        <Control Id="Desktop" Type="CheckBox" X="20" Y="148" Width="330" Height="17"
+                 Property="AtlasDesktopChecked" CheckBoxValue="1" Text="!(loc.AtlasDesktop)" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="320" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.AtlasOptionsTitle)" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="310" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.AtlasOptionsDescription)" />
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+      </Dialog>
+
+      <Publish Dialog="BrowseDlg" Control="OK" Event="CheckTargetPath" Value="[_BrowseProperty]" Order="1" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SetTargetPath" Value="[_BrowseProperty]" Order="2" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="EndDialog" Value="Return" Order="3" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="AtlasLanguage" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" Order="2" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" Order="2" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchAtlas" Order="1"
+               Condition="NOT Installed AND WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="2" />
+
+      <InstallUISequence>
+        <Show Dialog="AtlasLanguage" After="CostFinalize" Condition="NOT RESUME AND NOT Preselected" />
+      </InstallUISequence>
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
+</Wix>

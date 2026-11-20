@@ -6,6 +6,11 @@
 - Split settings into Interface, Display and Audio pages. Keep toggle row backgrounds stable on hover and make overflowing menus scroll on desktop and mobile.
 - Check the latest stable GitHub release at startup. Show the release notes and a GitHub link when a newer version is available.
 
+- Add an ATLAS 0.3.0 Windows x64 MSI with English and Russian setup, optional Start menu and desktop shortcuts, and upgrades that keep the selected shortcuts and install folder.
+- Use standard WiX installer dialogs and add Repair and Remove to the MSI maintenance wizard.
+- Keep the MSI language buttons visible and offer to launch the game from the final installation screen.
+- Refresh the bilingual website description and campaign/Android screenshots; correct orientation and multiplayer capacity and link the mod studio.
+
 ## 0.3.0 — 2026-11-08
 
 - Make the mobile page transition test independent of runner frame timing.

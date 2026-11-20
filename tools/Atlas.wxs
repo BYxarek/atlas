@@ -1,0 +1,88 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="ATLAS" Manufacturer="BYxarek" Version="$(var.Version)" Codepage="1251"
+           UpgradeCode="E3FCF362-8C02-42AF-BA7D-CA7C45514F6E" Scope="perUserOrMachine">
+    <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of ATLAS is already installed. / Уже установлена более новая версия ATLAS." />
+    <MediaTemplate EmbedCab="yes" />
+    <CustomAction Id="LaunchAtlas" FileRef="AtlasExe" ExeCommand="" Return="asyncNoWait" />
+
+    <Property Id="INSTALLFOLDER" Secure="yes" />
+    <Property Id="STARTMENUSHORTCUT" Secure="yes" />
+    <Property Id="DESKTOPSHORTCUT" Secure="yes" />
+    <Property Id="ATLASPREVIOUSFOLDER">
+      <!-- The original 0.3.0 MSI did not write its installation directory to the registry. -->
+      <ComponentSearch Id="AtlasGameFolder" Guid="DCF78498-6151-523E-B32C-5B46E5A388B2" Type="file" />
+    </Property>
+    <Property Id="ATLASUSERSHORTCUTS">
+      <RegistrySearch Root="HKCU" Key="Software\BYxarek\ATLAS\Installer" Name="Shortcuts" Type="raw" />
+    </Property>
+    <Property Id="ATLASMACHINESHORTCUTS">
+      <RegistrySearch Root="HKLM" Key="Software\BYxarek\ATLAS\Installer" Name="Shortcuts" Type="raw" />
+    </Property>
+    <Property Id="ATLASUSERFOLDER">
+      <RegistrySearch Root="HKCU" Key="Software\BYxarek\ATLAS\Installer" Name="InstallFolder" Type="raw" />
+    </Property>
+    <Property Id="ATLASMACHINEFOLDER">
+      <RegistrySearch Root="HKLM" Key="Software\BYxarek\ATLAS\Installer" Name="InstallFolder" Type="raw" />
+    </Property>
+    <SetProperty Id="INSTALLFOLDER" Action="RestoreAtlasUserFolder" Value="[ATLASUSERFOLDER]"
+                 After="AppSearch" Sequence="first"
+                 Condition="NOT INSTALLFOLDER AND (Installed OR WIX_UPGRADE_DETECTED) AND (NOT ALLUSERS OR MSIALLUSERS = 1) AND ATLASUSERFOLDER" />
+    <SetProperty Id="INSTALLFOLDER" Value="[ATLASPREVIOUSFOLDER]" After="RestoreAtlasUserFolder" Sequence="first"
+                 Condition="NOT INSTALLFOLDER AND (Installed OR WIX_UPGRADE_DETECTED) AND (NOT ALLUSERS OR MSIALLUSERS = 1) AND ATLASPREVIOUSFOLDER" />
+    <SetProperty Id="INSTALLFOLDER" Action="RestoreAtlasMachineFolder" Value="[ATLASMACHINEFOLDER]"
+                 After="SetINSTALLFOLDER" Sequence="first"
+                 Condition="NOT INSTALLFOLDER AND (Installed OR WIX_UPGRADE_DETECTED) AND ALLUSERS AND MSIALLUSERS &lt;&gt; 1 AND ATLASMACHINEFOLDER" />
+    <SetProperty Id="AtlasSavedShortcuts" Action="ReadAtlasUserShortcuts" Value="[ATLASUSERSHORTCUTS]"
+                 After="AppSearch" Sequence="first" Condition="(NOT ALLUSERS OR MSIALLUSERS = 1) AND ATLASUSERSHORTCUTS" />
+    <SetProperty Id="AtlasSavedShortcuts" Action="ReadAtlasMachineShortcuts" Value="[ATLASMACHINESHORTCUTS]"
+                 After="ReadAtlasUserShortcuts" Sequence="first" Condition="ALLUSERS AND MSIALLUSERS &lt;&gt; 1 AND ATLASMACHINESHORTCUTS" />
+    <SetProperty Id="STARTMENUSHORTCUT" Value="1" After="ReadAtlasMachineShortcuts" Sequence="first"
+                 Condition="NOT STARTMENUSHORTCUT AND (NOT AtlasSavedShortcuts OR AtlasSavedShortcuts &lt;&lt; &quot;1-&quot;)" />
+    <SetProperty Id="DESKTOPSHORTCUT" Value="1" After="SetSTARTMENUSHORTCUT" Sequence="first"
+                 Condition="NOT DESKTOPSHORTCUT AND AtlasSavedShortcuts &gt;&gt; &quot;-1&quot;" />
+    <SetProperty Id="AtlasStartChecked" Value="1" After="SetDESKTOPSHORTCUT" Sequence="ui"
+                 Condition="STARTMENUSHORTCUT = 1" />
+    <SetProperty Id="AtlasDesktopChecked" Value="1" After="SetAtlasStartChecked" Sequence="ui"
+                 Condition="DESKTOPSHORTCUT = 1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ATLAS">
+        <Component Id="Game" Guid="DCF78498-6151-523E-B32C-5B46E5A388B2">
+          <File Id="AtlasExe" Source="Atlas.exe" KeyPath="yes" />
+        </Component>
+        <Component Id="ShortcutPreferences">
+          <RegistryValue Root="HKMU" Key="Software\BYxarek\ATLAS\Installer" Name="Shortcuts"
+                         Type="string" Value="[STARTMENUSHORTCUT]-[DESKTOPSHORTCUT]" KeyPath="yes" />
+          <RegistryValue Root="HKMU" Key="Software\BYxarek\ATLAS\Installer" Name="InstallFolder"
+                         Type="string" Value="[INSTALLFOLDER]" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <!-- The shell folders and HKMU key paths both follow the MSI install scope. -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Condition="STARTMENUSHORTCUT = 1">
+        <Shortcut Id="AtlasStartMenu" Name="ATLAS" Target="[INSTALLFOLDER]Atlas.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKMU" Key="Software\BYxarek\ATLAS\Installer" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Condition="DESKTOPSHORTCUT = 1">
+        <Shortcut Id="AtlasDesktop" Name="ATLAS" Target="[INSTALLFOLDER]Atlas.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKMU" Key="Software\BYxarek\ATLAS\Installer" Name="Desktop" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Atlas" Title="ATLAS">
+      <ComponentRef Id="Game" />
+      <ComponentRef Id="ShortcutPreferences" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <Files Directory="INSTALLFOLDER" Include="!(bindpath.Payload)\**">
+        <Exclude Files="!(bindpath.Payload)\Atlas.exe" />
+      </Files>
+    </Feature>
+
+    <UIRef Id="AtlasInstallerUI" />
+  </Package>
+</Wix>
